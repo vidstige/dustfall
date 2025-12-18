@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dustfall Isometric Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #202938, #090c10 70%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas {
+      border: 2px solid #161b21;
+      background: #07090c;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="isoCanvas" width="960" height="540"></canvas>
+  <script>
+    const TILE_WIDTH = 64;
+    const TILE_HEIGHT = 32;
+    const MAP_WIDTH = 20;
+    const MAP_HEIGHT = 20;
+    const TILE_VARIANTS = 8;
+
+    /**
+     * Creates a list of canvases that act as isometric tile bitmaps.
+     * Each tile is seeded with random colors and tiny accents to keep them unique.
+     */
+    function createRandomTileSet(count, width, height) {
+      const tiles = [];
+      for (let i = 0; i < count; i += 1) {
+        const tileCanvas = document.createElement("canvas");
+        tileCanvas.width = width;
+        tileCanvas.height = height;
+        const tileCtx = tileCanvas.getContext("2d");
+
+        tileCtx.clearRect(0, 0, width, height);
+
+        const hue = Math.floor(Math.random() * 360);
+        const gradient = tileCtx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, `hsl(${hue}, 60%, 70%)`);
+        gradient.addColorStop(1, `hsl(${hue}, 60%, 35%)`);
+
+        tileCtx.beginPath();
+        tileCtx.moveTo(width / 2, 0);
+        tileCtx.lineTo(width, height / 2);
+        tileCtx.lineTo(width / 2, height);
+        tileCtx.lineTo(0, height / 2);
+        tileCtx.closePath();
+        tileCtx.fillStyle = gradient;
+        tileCtx.fill();
+        tiles.push(tileCanvas);
+      }
+      return tiles;
+    }
+
+    /**
+     * Generates the logical layout of the world, assigning tile indices randomly.
+     */
+    function createWorldMap(width, height, tileCount) {
+      const map = [];
+      for (let y = 0; y < height; y += 1) {
+        const row = [];
+        for (let x = 0; x < width; x += 1) {
+          row.push(Math.floor(Math.random() * tileCount));
+        }
+        map.push(row);
+      }
+      return map;
+    }
+
+    const tileSet = createRandomTileSet(TILE_VARIANTS, TILE_WIDTH, TILE_HEIGHT);
+    const worldMap = createWorldMap(MAP_WIDTH, MAP_HEIGHT, tileSet.length);
+
+    const canvas = document.getElementById("isoCanvas");
+    const context = canvas.getContext("2d");
+
+    /**
+     * Renders the provided map using the supplied tile bitmaps.
+     */
+    function renderWorld(ctx, map, tiles, originX, originY) {
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+      for (let y = 0; y < map.length; y += 1) {
+        const row = map[y];
+        for (let x = 0; x < row.length; x += 1) {
+          const tileIndex = row[x];
+          const tile = tiles[tileIndex];
+          if (!tile) continue;
+
+          const screenX = originX + (x - y) * (TILE_WIDTH / 2);
+          const screenY = originY + (x + y) * (TILE_HEIGHT / 2);
+          ctx.drawImage(tile, screenX, screenY);
+        }
+      }
+    }
+
+    const originX = canvas.width / 2 - TILE_WIDTH / 2;
+    const originY = 40;
+
+    function gameLoop() {
+      renderWorld(context, worldMap, tileSet, originX, originY);
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Export a tiny API for experimenting in the console.
+    window.isoEngine = {
+      tileSet,
+      worldMap,
+      renderWorld: () => renderWorld(context, worldMap, tileSet, originX, originY),
+    };
+
+    gameLoop();
+  </script>
+</body>
+</html>
