@@ -140,8 +140,8 @@ function panCameraByPixels(deltaScreenX: number, deltaScreenY: number): void {
   const deltaTileY =
     0.5 * (deltaScreenY / HALF_TILE_HEIGHT - deltaScreenX / HALF_TILE_WIDTH);
 
-  camera.x -= deltaTileX;
-  camera.y -= deltaTileY;
+  camera.x += deltaTileX;
+  camera.y += deltaTileY;
   constrainCameraPosition(camera);
 }
 
