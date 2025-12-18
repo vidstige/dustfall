@@ -1,0 +1,9 @@
+# npm dependencies
+/node_modules
+
+# parcel intermediates & output
+/.parcel-cache
+/dist
+
+# mac debris
+.DS_Store

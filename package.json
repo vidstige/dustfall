@@ -1,0 +1,23 @@
+{
+  "name": "dustfall",
+  "version": "1.0.0",
+  "description": "Simple isometric renderer demo powered by Parcel + TypeScript",
+  "source": "src/index.html",
+  "scripts": {
+    "dev": "parcel",
+    "build": "parcel build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "isometric",
+    "canvas",
+    "parcel",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "parcel": "^2.16.3",
+    "typescript": "^5.9.3"
+  }
+}
