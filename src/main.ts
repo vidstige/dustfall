@@ -131,16 +131,4 @@ interface IsoEngineAPI {
   renderWorld: () => void;
 }
 
-declare global {
-  interface Window {
-    isoEngine: IsoEngineAPI;
-  }
-}
-
-window.isoEngine = {
-  tileSet,
-  worldMap,
-  renderWorld: () => renderWorld(context, worldMap, tileSet, originX, originY),
-};
-
 gameLoop();
