@@ -5,6 +5,7 @@ const HALF_TILE_HEIGHT = TILE_HEIGHT / 2;
 const MAP_WIDTH = 220;
 const MAP_HEIGHT = 220;
 const TILE_VARIANTS = 8;
+const WHEEL_LINE_HEIGHT = 16;
 
 type TileBitmap = HTMLCanvasElement;
 type WorldMap = number[][];
@@ -89,6 +90,7 @@ const worldMap = createWorldMap(MAP_WIDTH, MAP_HEIGHT, tileSet.length);
 
 const canvas = assertCanvas(document.getElementById("isoCanvas"));
 const context = assertContext(canvas);
+canvas.addEventListener("wheel", handleWheel, { passive: false });
 
 const viewOrigin: Point2D = {
   x: canvas.width / 2,
@@ -125,6 +127,37 @@ function screenToTileCoord(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function constrainCameraPosition(activeCamera: Camera): void {
+  activeCamera.x = clamp(activeCamera.x, 0, MAP_WIDTH - 1);
+  activeCamera.y = clamp(activeCamera.y, 0, MAP_HEIGHT - 1);
+}
+
+function panCameraByPixels(deltaScreenX: number, deltaScreenY: number): void {
+  const deltaTileX =
+    0.5 * (deltaScreenX / HALF_TILE_WIDTH + deltaScreenY / HALF_TILE_HEIGHT);
+  const deltaTileY =
+    0.5 * (deltaScreenY / HALF_TILE_HEIGHT - deltaScreenX / HALF_TILE_WIDTH);
+
+  camera.x -= deltaTileX;
+  camera.y -= deltaTileY;
+  constrainCameraPosition(camera);
+}
+
+function handleWheel(event: WheelEvent): void {
+  event.preventDefault();
+
+  const scale =
+    event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? WHEEL_LINE_HEIGHT
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? canvas.height
+        : 1;
+  const pixelX = event.deltaX * scale;
+  const pixelY = event.deltaY * scale;
+
+  panCameraByPixels(pixelX, pixelY);
 }
 
 /**
@@ -196,6 +229,7 @@ interface IsoEngineAPI {
   worldMap: WorldMap;
   camera: Camera;
   renderWorld: () => void;
+  pan: (pixelX: number, pixelY: number) => void;
 }
 
 declare global {
@@ -209,6 +243,7 @@ window.isoEngine = {
   worldMap,
   camera,
   renderWorld: () => renderWorld(context, worldMap, tileSet, camera, viewOrigin),
+  pan: panCameraByPixels,
 };
 
 gameLoop();
