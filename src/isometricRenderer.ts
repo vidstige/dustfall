@@ -14,7 +14,6 @@ export interface Point2D {
 export interface IsoRendererConfig {
   tileWidth: number;
   tileHeight: number;
-  tileVariants: number;
   mapWidth: number;
   mapHeight: number;
   viewOrigin: Point2D;
@@ -29,27 +28,33 @@ export class IsometricRenderer {
   public readonly worldMap: WorldMap;
   public readonly camera: Camera;
 
-  private readonly tileVariants: number;
   private readonly halfTileWidth: number;
   private readonly halfTileHeight: number;
   private viewOrigin: Point2D;
 
-  constructor(config: IsoRendererConfig) {
+  constructor(
+    config: IsoRendererConfig,
+    tileSet: TileBitmap[],
+    worldMap: WorldMap,
+    initialCamera?: Camera,
+  ) {
     this.tileWidth = config.tileWidth;
     this.tileHeight = config.tileHeight;
-    this.tileVariants = config.tileVariants;
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.halfTileWidth = this.tileWidth / 2;
     this.halfTileHeight = this.tileHeight / 2;
     this.viewOrigin = { ...config.viewOrigin };
 
-    this.tileSet = createRandomTileSet(this.tileVariants, this.tileWidth, this.tileHeight);
-    this.worldMap = createWorldMap(this.mapWidth, this.mapHeight, this.tileSet.length);
-    this.camera = {
-      x: this.mapWidth / 2,
-      y: this.mapHeight / 2,
-    };
+    this.tileSet = tileSet;
+    this.worldMap = worldMap;
+    this.camera = initialCamera
+      ? { ...initialCamera }
+      : {
+          x: this.mapWidth / 2,
+          y: this.mapHeight / 2,
+        };
+    this.constrainCameraPosition();
   }
 
   setViewOrigin(origin: Point2D): void {
@@ -139,62 +144,6 @@ export class IsometricRenderer {
     this.camera.x = clamp(this.camera.x, 0, this.mapWidth - 1);
     this.camera.y = clamp(this.camera.y, 0, this.mapHeight - 1);
   }
-}
-
-function createRandomTileSet(count: number, width: number, height: number): TileBitmap[] {
-  const tiles: TileBitmap[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const tileCanvas = document.createElement("canvas");
-    tileCanvas.width = width;
-    tileCanvas.height = height;
-    const tileCtx = tileCanvas.getContext("2d");
-    if (!tileCtx) {
-      continue;
-    }
-
-    tileCtx.clearRect(0, 0, width, height);
-
-    const hue = Math.floor(Math.random() * 360);
-    const gradient = tileCtx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, `hsl(${hue}, 60%, 70%)`);
-    gradient.addColorStop(1, `hsl(${hue}, 60%, 35%)`);
-
-    tileCtx.beginPath();
-    tileCtx.moveTo(width / 2, 0);
-    tileCtx.lineTo(width, height / 2);
-    tileCtx.lineTo(width / 2, height);
-    tileCtx.lineTo(0, height / 2);
-    tileCtx.closePath();
-    tileCtx.fillStyle = gradient;
-    tileCtx.fill();
-
-    // Scatter a few random strokes to give each tile unique texture.
-    tileCtx.strokeStyle = `hsla(${hue}, 30%, 20%, 0.25)`;
-    tileCtx.lineWidth = 1;
-    for (let d = 0; d < 6; d += 1) {
-      const px = Math.random() * width;
-      const py = Math.random() * height;
-      tileCtx.beginPath();
-      tileCtx.moveTo(px, py);
-      tileCtx.lineTo(px + Math.random() * 6 - 3, py + Math.random() * 6 - 3);
-      tileCtx.stroke();
-    }
-
-    tiles.push(tileCanvas);
-  }
-  return tiles;
-}
-
-function createWorldMap(width: number, height: number, tileCount: number): WorldMap {
-  const map: WorldMap = [];
-  for (let y = 0; y < height; y += 1) {
-    const row: number[] = [];
-    for (let x = 0; x < width; x += 1) {
-      row.push(Math.floor(Math.random() * tileCount));
-    }
-    map.push(row);
-  }
-  return map;
 }
 
 function clamp(value: number, min: number, max: number): number {
