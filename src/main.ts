@@ -2,7 +2,6 @@ import { IsometricRenderer, Camera, TileBitmap } from "./isometricRenderer";
 import { WorldMap, WorldMapData } from "./worldMap";
 import { createRandomTileSet } from "./randomTileSet";
 
-const WHEEL_LINE_HEIGHT = 16;
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
 const TILE_VARIANTS = 8;
@@ -48,14 +47,8 @@ canvas.addEventListener("wheel", handleWheel, { passive: false });
 function handleWheel(event: WheelEvent): void {
   event.preventDefault();
 
-  const scale =
-    event.deltaMode === WheelEvent.DOM_DELTA_LINE
-      ? WHEEL_LINE_HEIGHT
-      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-        ? canvas.height
-        : 1;
-  const pixelX = event.deltaX * scale;
-  const pixelY = event.deltaY * scale;
+  const pixelX = event.deltaX;
+  const pixelY = event.deltaY;
 
   renderer.panByPixels(pixelX, pixelY);
 }
