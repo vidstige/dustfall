@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const path = require("node:path");
 const { createCanvas, loadImage } = require("canvas");
 
 function clamp(x, lo, hi) {
@@ -33,12 +34,17 @@ function sampleBilinear(src, sw, sh, u, v) {
   return out;
 }
 
+const TILE_WIDTH = 64;
+const TILE_HEIGHT = 32;
+
 async function main() {
   const inputPath = process.argv[2] ?? "input.png";
-  const outputPath = process.argv[3] ?? "out.png";
+  const outputDir = process.argv[3] ?? "tiles";
   const scale = 1;
 
   const img = await loadImage(inputPath);
+
+  await fs.promises.mkdir(outputDir, { recursive: true });
 
   const srcCanvas = createCanvas(img.width, img.height);
   const sctx = srcCanvas.getContext("2d");
@@ -112,8 +118,83 @@ async function main() {
   }
 
   octx.putImageData(outImgData, 0, 0);
-  await fs.promises.writeFile(outputPath, outCanvas.toBuffer("image/png"));
-  console.log(`Wrote ${outputPath} (${outW}x${outH}), scale=${scale}`);
+
+  const tileCanvas = createCanvas(TILE_WIDTH, TILE_HEIGHT);
+  const tileCtx = tileCanvas.getContext("2d");
+  let tileIndex = 0;
+
+  for (let ty = 0; ty + TILE_HEIGHT <= outH; ty += TILE_HEIGHT) {
+    for (let tx = 0; tx + TILE_WIDTH <= outW; tx += TILE_WIDTH) {
+      const tileImage = octx.getImageData(tx, ty, TILE_WIDTH, TILE_HEIGHT);
+      maskDiamond(tileImage);
+      if (!hasOpaquePixels(tileImage)) continue;
+      if (!isFullDiamond(tileImage)) continue;
+
+      tileCtx.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
+      tileCtx.putImageData(tileImage, 0, 0);
+      const filename = path.join(outputDir, `${tileIndex}.png`);
+      await fs.promises.writeFile(filename, tileCanvas.toBuffer("image/png"));
+      tileIndex += 1;
+    }
+  }
+
+  if (tileIndex === 0) {
+    throw new Error("No tiles with visible pixels were detected.");
+  }
+
+  console.log(`Wrote ${tileIndex} tiles to ${outputDir}`);
+}
+
+function hasOpaquePixels(imageData) {
+  const { data } = imageData;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] > 0) return true;
+  }
+  return false;
+}
+
+function maskDiamond(imageData) {
+  const { data, width, height } = imageData;
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
+
+  for (let y = 0; y < height; y += 1) {
+    const yNorm = Math.abs(y - centerY) / halfH;
+    for (let x = 0; x < width; x += 1) {
+      const xNorm = Math.abs(x - centerX) / halfW;
+      if (xNorm + yNorm > 1) {
+        const idx = (y * width + x) * 4;
+        data[idx + 0] = 0;
+        data[idx + 1] = 0;
+        data[idx + 2] = 0;
+        data[idx + 3] = 0;
+      }
+    }
+  }
+}
+
+function isFullDiamond(imageData) {
+  const { data, width, height } = imageData;
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
+
+  for (let y = 0; y < height; y += 1) {
+    const yNorm = Math.abs(y - centerY) / halfH;
+    for (let x = 0; x < width; x += 1) {
+      const xNorm = Math.abs(x - centerX) / halfW;
+      if (xNorm + yNorm <= 1) {
+        const idx = (y * width + x) * 4;
+        if (data[idx + 3] === 0) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 main().catch((err) => {
