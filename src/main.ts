@@ -1,12 +1,21 @@
 import { IsometricRenderer } from "./isometricRenderer";
 import { WorldMap, WorldMapData } from "./worldMap";
-import { createRandomTileSet } from "./randomTileSet";
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
-const TILE_VARIANTS = 8;
 const MAP_WIDTH = 220;
 const MAP_HEIGHT = 220;
+const TILE_IMAGE_URLS = [
+  new URL("./assets/tile53.png", import.meta.url).toString(),
+  new URL("./assets/tile100.png", import.meta.url).toString(),
+  new URL("./assets/tile108.png", import.meta.url).toString(),
+  new URL("./assets/tile163.png", import.meta.url).toString(),
+  new URL("./assets/tile178.png", import.meta.url).toString(),
+  new URL("./assets/tile192.png", import.meta.url).toString(),
+  new URL("./assets/tile255.png", import.meta.url).toString(),
+  new URL("./assets/tile298.png", import.meta.url).toString(),
+  new URL("./assets/tile312.png", import.meta.url).toString(),
+];
 
 function assertCanvas(element: HTMLElement | null): HTMLCanvasElement {
   if (!(element instanceof HTMLCanvasElement)) {
@@ -26,39 +35,48 @@ function assertContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 const canvas = assertCanvas(document.getElementById("isoCanvas"));
 const context = assertContext(canvas);
 
-const tileSet = createRandomTileSet(TILE_VARIANTS, TILE_WIDTH, TILE_HEIGHT);
-const worldMap = createWorldMap(MAP_WIDTH, MAP_HEIGHT, tileSet.length);
+let renderer: IsometricRenderer | null = null;
 
-const renderer = new IsometricRenderer(
-  {
-    tileWidth: TILE_WIDTH,
-    tileHeight: TILE_HEIGHT,
-    viewOrigin: {
-      x: canvas.width / 2,
-      y: 120,
+init().catch((error) => {
+  console.error("Failed to initialize renderer", error);
+});
+
+async function init(): Promise<void> {
+  const tileSet = await loadTileBitmaps();
+  const worldMap = createWorldMap(MAP_WIDTH, MAP_HEIGHT, tileSet.length);
+
+  renderer = new IsometricRenderer(
+    {
+      tileWidth: TILE_WIDTH,
+      tileHeight: TILE_HEIGHT,
+      viewOrigin: {
+        x: canvas.width / 2,
+        y: 120,
+      },
     },
-  },
-  tileSet,
-  worldMap,
-);
+    tileSet,
+    worldMap,
+  );
 
-canvas.addEventListener("wheel", handleWheel, { passive: false });
+  canvas.addEventListener("wheel", handleWheel, { passive: false });
+  gameLoop();
+}
 
 function handleWheel(event: WheelEvent): void {
+  if (!renderer) {
+    return;
+  }
   event.preventDefault();
-
-  const pixelX = event.deltaX;
-  const pixelY = event.deltaY;
-
-  renderer.panByPixels(pixelX, pixelY);
+  renderer.panByPixels(event.deltaX, event.deltaY);
 }
 
 function gameLoop(): void {
+  if (!renderer) {
+    return;
+  }
   renderer.render(context);
   requestAnimationFrame(gameLoop);
 }
-
-gameLoop();
 
 function createWorldMap(width: number, height: number, tileCount: number): WorldMap {
   const data: WorldMapData = [];
@@ -70,4 +88,31 @@ function createWorldMap(width: number, height: number, tileCount: number): World
     data.push(row);
   }
   return new WorldMap(data);
+}
+
+async function loadTileBitmaps(): Promise<HTMLCanvasElement[]> {
+  const images = await Promise.all(TILE_IMAGE_URLS.map(loadImage));
+  return images.map((image) => imageToCanvas(image, TILE_WIDTH, TILE_HEIGHT));
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load tile image: ${String(src)}`));
+    img.src = src;
+  });
+}
+
+function imageToCanvas(image: HTMLImageElement, width: number, height: number): HTMLCanvasElement {
+  const tileCanvas = document.createElement("canvas");
+  tileCanvas.width = width;
+  tileCanvas.height = height;
+  const tileCtx = tileCanvas.getContext("2d");
+  if (!tileCtx) {
+    throw new Error("Unable to create tile canvas context.");
+  }
+  tileCtx.clearRect(0, 0, width, height);
+  tileCtx.drawImage(image, 0, 0, width, height);
+  return tileCanvas;
 }
