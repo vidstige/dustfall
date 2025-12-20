@@ -1,4 +1,5 @@
-import { IsometricRenderer, Camera, TileBitmap, WorldMap } from "./isometricRenderer";
+import { IsometricRenderer, Camera, TileBitmap } from "./isometricRenderer";
+import { WorldMap, WorldMapData } from "./worldMap";
 import { createRandomTileSet } from "./randomTileSet";
 
 const WHEEL_LINE_HEIGHT = 16;
@@ -33,8 +34,6 @@ const renderer = new IsometricRenderer(
   {
     tileWidth: TILE_WIDTH,
     tileHeight: TILE_HEIGHT,
-    mapWidth: MAP_WIDTH,
-    mapHeight: MAP_HEIGHT,
     viewOrigin: {
       x: canvas.width / 2,
       y: 120,
@@ -93,13 +92,13 @@ window.isoEngine = {
 gameLoop();
 
 function createWorldMap(width: number, height: number, tileCount: number): WorldMap {
-  const map: WorldMap = [];
+  const data: WorldMapData = [];
   for (let y = 0; y < height; y += 1) {
     const row: number[] = [];
     for (let x = 0; x < width; x += 1) {
       row.push(Math.floor(Math.random() * tileCount));
     }
-    map.push(row);
+    data.push(row);
   }
-  return map;
+  return new WorldMap(data);
 }

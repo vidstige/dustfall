@@ -1,5 +1,6 @@
+import { WorldMap } from "./worldMap";
+
 export type TileBitmap = HTMLCanvasElement;
-export type WorldMap = number[][];
 
 export interface Camera {
   x: number;
@@ -14,16 +15,12 @@ export interface Point2D {
 export interface IsoRendererConfig {
   tileWidth: number;
   tileHeight: number;
-  mapWidth: number;
-  mapHeight: number;
   viewOrigin: Point2D;
 }
 
 export class IsometricRenderer {
   public readonly tileWidth: number;
   public readonly tileHeight: number;
-  public readonly mapWidth: number;
-  public readonly mapHeight: number;
   public readonly tileSet: TileBitmap[];
   public readonly worldMap: WorldMap;
   public readonly camera: Camera;
@@ -40,19 +37,17 @@ export class IsometricRenderer {
   ) {
     this.tileWidth = config.tileWidth;
     this.tileHeight = config.tileHeight;
-    this.mapWidth = config.mapWidth;
-    this.mapHeight = config.mapHeight;
+    this.worldMap = worldMap;
     this.halfTileWidth = this.tileWidth / 2;
     this.halfTileHeight = this.tileHeight / 2;
     this.viewOrigin = { ...config.viewOrigin };
 
     this.tileSet = tileSet;
-    this.worldMap = worldMap;
     this.camera = initialCamera
       ? { ...initialCamera }
       : {
-          x: this.mapWidth / 2,
-          y: this.mapHeight / 2,
+          x: this.worldMap.width / 2,
+          y: this.worldMap.height / 2,
         };
     this.constrainCameraPosition();
   }
@@ -75,8 +70,8 @@ export class IsometricRenderer {
   render(ctx: CanvasRenderingContext2D): void {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    const mapHeight = this.worldMap.length;
-    const mapWidth = this.worldMap[0]?.length ?? 0;
+    const mapHeight = this.worldMap.height;
+    const mapWidth = this.worldMap.width;
     if (mapHeight === 0 || mapWidth === 0) {
       return;
     }
@@ -96,7 +91,7 @@ export class IsometricRenderer {
     const maxY = clamp(Math.ceil(Math.max(...corners.map((c) => c.y))) + margin, 0, mapHeight - 1);
 
     for (let y = minY; y <= maxY; y += 1) {
-      const row = this.worldMap[y];
+      const row = this.worldMap.data[y];
       if (!row) continue;
 
       for (let x = minX; x <= maxX; x += 1) {
@@ -141,8 +136,8 @@ export class IsometricRenderer {
   }
 
   private constrainCameraPosition(): void {
-    this.camera.x = clamp(this.camera.x, 0, this.mapWidth - 1);
-    this.camera.y = clamp(this.camera.y, 0, this.mapHeight - 1);
+    this.camera.x = clamp(this.camera.x, 0, this.worldMap.width - 1);
+    this.camera.y = clamp(this.camera.y, 0, this.worldMap.height - 1);
   }
 }
 
