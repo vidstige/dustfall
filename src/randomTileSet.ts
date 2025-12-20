@@ -27,18 +27,6 @@ export function createRandomTileSet(count: number, width: number, height: number
     tileCtx.fillStyle = gradient;
     tileCtx.fill();
 
-    // Scatter a few random strokes to give each tile unique texture.
-    tileCtx.strokeStyle = `hsla(${hue}, 30%, 20%, 0.25)`;
-    tileCtx.lineWidth = 1;
-    for (let d = 0; d < 6; d += 1) {
-      const px = Math.random() * width;
-      const py = Math.random() * height;
-      tileCtx.beginPath();
-      tileCtx.moveTo(px, py);
-      tileCtx.lineTo(px + Math.random() * 6 - 3, py + Math.random() * 6 - 3);
-      tileCtx.stroke();
-    }
-
     tiles.push(tileCanvas);
   }
   return tiles;
