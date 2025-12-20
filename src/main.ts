@@ -1,4 +1,4 @@
-import { IsometricRenderer, Camera, TileBitmap } from "./isometricRenderer";
+import { IsometricRenderer } from "./isometricRenderer";
 import { WorldMap, WorldMapData } from "./worldMap";
 import { createRandomTileSet } from "./randomTileSet";
 
@@ -57,30 +57,6 @@ function gameLoop(): void {
   renderer.render(context);
   requestAnimationFrame(gameLoop);
 }
-
-interface IsoEngineAPI {
-  renderer: IsometricRenderer;
-  camera: Camera;
-  tileSet: TileBitmap[];
-  worldMap: WorldMap;
-  pan: (pixelX: number, pixelY: number) => void;
-  render: () => void;
-}
-
-declare global {
-  interface Window {
-    isoEngine: IsoEngineAPI;
-  }
-}
-
-window.isoEngine = {
-  renderer,
-  camera: renderer.camera,
-  tileSet: renderer.tileSet,
-  worldMap: renderer.worldMap,
-  pan: (pixelX: number, pixelY: number) => renderer.panByPixels(pixelX, pixelY),
-  render: () => renderer.render(context),
-};
 
 gameLoop();
 
