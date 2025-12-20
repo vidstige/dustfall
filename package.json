@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "Simple isometric renderer demo powered by Parcel + TypeScript",
   "source": "src/index.html",
+  "workspaces": [
+    "tools"
+  ],
   "scripts": {
     "dev": "parcel",
     "build": "parcel build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "tile-tool": "npm run tile-tool --prefix tools"
   },
   "keywords": [
     "isometric",
