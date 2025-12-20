@@ -1,33 +1,11 @@
 import { IsometricRenderer } from "./isometricRenderer";
 import { WorldMap, WorldMapData } from "./worldMap";
+import { loadImageTileSet } from "./imageTileSet";
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
 const MAP_WIDTH = 220;
 const MAP_HEIGHT = 220;
-const TILE_IMAGE_URLS = [
-  new URL("./assets/tile0.png", import.meta.url).toString(),
-  new URL("./assets/tile53.png", import.meta.url).toString(),
-  new URL("./assets/tile100.png", import.meta.url).toString(),
-  new URL("./assets/tile108.png", import.meta.url).toString(),
-  new URL("./assets/tile110.png", import.meta.url).toString(),
-  new URL("./assets/tile147.png", import.meta.url).toString(),
-  new URL("./assets/tile151.png", import.meta.url).toString(),
-  new URL("./assets/tile163.png", import.meta.url).toString(),
-  new URL("./assets/tile165.png", import.meta.url).toString(),
-  new URL("./assets/tile178.png", import.meta.url).toString(),
-  new URL("./assets/tile192.png", import.meta.url).toString(),
-  new URL("./assets/tile205.png", import.meta.url).toString(),
-  new URL("./assets/tile215.png", import.meta.url).toString(),
-  new URL("./assets/tile229.png", import.meta.url).toString(),
-  new URL("./assets/tile255.png", import.meta.url).toString(),
-  new URL("./assets/tile298.png", import.meta.url).toString(),
-  new URL("./assets/tile312.png", import.meta.url).toString(),
-  new URL("./assets/tile40.png", import.meta.url).toString(),
-  new URL("./assets/tile417.png", import.meta.url).toString(),
-  new URL("./assets/tile445.png", import.meta.url).toString(),
-  new URL("./assets/tile447.png", import.meta.url).toString(),
-];
 
 function assertCanvas(element: HTMLElement | null): HTMLCanvasElement {
   if (!(element instanceof HTMLCanvasElement)) {
@@ -54,7 +32,7 @@ init().catch((error) => {
 });
 
 async function init(): Promise<void> {
-  const tileSet = await loadTileBitmaps();
+  const tileSet = await loadImageTileSet(TILE_WIDTH, TILE_HEIGHT);
   const worldMap = createWorldMap(MAP_WIDTH, MAP_HEIGHT, tileSet.length);
 
   renderer = new IsometricRenderer(
@@ -100,31 +78,4 @@ function createWorldMap(width: number, height: number, tileCount: number): World
     data.push(row);
   }
   return new WorldMap(data);
-}
-
-async function loadTileBitmaps(): Promise<HTMLCanvasElement[]> {
-  const images = await Promise.all(TILE_IMAGE_URLS.map(loadImage));
-  return images.map((image) => imageToCanvas(image, TILE_WIDTH, TILE_HEIGHT));
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load tile image: ${String(src)}`));
-    img.src = src;
-  });
-}
-
-function imageToCanvas(image: HTMLImageElement, width: number, height: number): HTMLCanvasElement {
-  const tileCanvas = document.createElement("canvas");
-  tileCanvas.width = width;
-  tileCanvas.height = height;
-  const tileCtx = tileCanvas.getContext("2d");
-  if (!tileCtx) {
-    throw new Error("Unable to create tile canvas context.");
-  }
-  tileCtx.clearRect(0, 0, width, height);
-  tileCtx.drawImage(image, 0, 0, width, height);
-  return tileCanvas;
 }
