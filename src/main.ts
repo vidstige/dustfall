@@ -6,15 +6,27 @@ const TILE_HEIGHT = 32;
 const MAP_WIDTH = 220;
 const MAP_HEIGHT = 220;
 const TILE_IMAGE_URLS = [
+  new URL("./assets/tile0.png", import.meta.url).toString(),
   new URL("./assets/tile53.png", import.meta.url).toString(),
   new URL("./assets/tile100.png", import.meta.url).toString(),
   new URL("./assets/tile108.png", import.meta.url).toString(),
+  new URL("./assets/tile110.png", import.meta.url).toString(),
+  new URL("./assets/tile147.png", import.meta.url).toString(),
+  new URL("./assets/tile151.png", import.meta.url).toString(),
   new URL("./assets/tile163.png", import.meta.url).toString(),
+  new URL("./assets/tile165.png", import.meta.url).toString(),
   new URL("./assets/tile178.png", import.meta.url).toString(),
   new URL("./assets/tile192.png", import.meta.url).toString(),
+  new URL("./assets/tile205.png", import.meta.url).toString(),
+  new URL("./assets/tile215.png", import.meta.url).toString(),
+  new URL("./assets/tile229.png", import.meta.url).toString(),
   new URL("./assets/tile255.png", import.meta.url).toString(),
   new URL("./assets/tile298.png", import.meta.url).toString(),
   new URL("./assets/tile312.png", import.meta.url).toString(),
+  new URL("./assets/tile40.png", import.meta.url).toString(),
+  new URL("./assets/tile417.png", import.meta.url).toString(),
+  new URL("./assets/tile445.png", import.meta.url).toString(),
+  new URL("./assets/tile447.png", import.meta.url).toString(),
 ];
 
 function assertCanvas(element: HTMLElement | null): HTMLCanvasElement {
