@@ -7,3 +7,5 @@ node_modules
 
 # mac debris
 .DS_Store
+
+/images/tiles/
