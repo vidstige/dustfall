@@ -5,13 +5,42 @@ const GRID_HEIGHT: usize = 16;
 const TILE_WIDTH: f32 = 64.0;
 const TILE_HEIGHT: f32 = 32.0;
 
+struct TileMap {
+    width: usize,
+    height: usize,
+    indices: Vec<u32>,
+}
+
+impl TileMap {
+    fn new(width: usize, height: usize, seed: u32) -> Self {
+        let mut value = seed;
+        let mut indices = Vec::with_capacity(width * height);
+        for _ in 0..width * height {
+            value = value.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            indices.push(value);
+        }
+
+        Self {
+            width,
+            height,
+            indices,
+        }
+    }
+
+    fn tile_index(&self, x: usize, y: usize) -> u32 {
+        self.indices[y * self.width + x]
+    }
+}
+
 #[macroquad::main("Dustfall Isometric Checkered Plane")]
 async fn main() {
+    let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
+
     loop {
         clear_background(Color::from_rgba(15, 18, 27, 255));
 
         let anchor = vec2(screen_width() * 0.5, screen_height() * 0.4);
-        draw_plane(anchor);
+        draw_plane(anchor, &map);
 
         draw_text(
             "Macroquad checkered plane (press Esc to exit)",
@@ -25,11 +54,11 @@ async fn main() {
     }
 }
 
-fn draw_plane(anchor: Vec2) {
-    let diag_count = GRID_WIDTH + GRID_HEIGHT - 1;
+fn draw_plane(anchor: Vec2, map: &TileMap) {
+    let diag_count = map.width + map.height - 1;
     for diag in 0..diag_count {
-        let x_min = diag.saturating_sub(GRID_HEIGHT - 1);
-        let x_max = diag.min(GRID_WIDTH - 1);
+        let x_min = diag.saturating_sub(map.height - 1);
+        let x_max = diag.min(map.width - 1);
         if x_min > x_max {
             continue;
         }
@@ -37,7 +66,7 @@ fn draw_plane(anchor: Vec2) {
         for x in x_min..=x_max {
             let y = diag - x;
             let center = iso_to_screen(x as f32, y as f32, anchor);
-            let color_toggle = (x + y) % 2 == 0;
+            let color_toggle = map.tile_index(x, y) % 2 == 0;
             draw_tile(center, color_toggle);
         }
     }
