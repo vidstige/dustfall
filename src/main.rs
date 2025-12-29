@@ -6,6 +6,8 @@ const GRID_HEIGHT: usize = 16;
 const TILE_WIDTH: f32 = 64.0;
 const TILE_HEIGHT: f32 = 32.0;
 const TILE_VARIANTS: usize = 32;
+const SCROLL_PAN_SPEED: f32 = 4.0;
+const DRAG_PAN_SCALE: f32 = 0.45;
 
 struct TileMap {
     width: usize,
@@ -57,30 +59,116 @@ impl TileSet {
     }
 }
 
+struct IsoCamera {
+    offset: Vec2,
+    active_touch_id: Option<u64>,
+    last_touch_pos: Option<Vec2>,
+}
+
+impl IsoCamera {
+    fn new(map: &TileMap) -> Self {
+        let center = vec2(map.width as f32 * 0.5, map.height as f32 * 0.5);
+        let iso_center = iso_coords(center.x, center.y);
+        Self {
+            offset: iso_center,
+            active_touch_id: None,
+            last_touch_pos: None,
+        }
+    }
+
+    fn update(&mut self) {
+        let mut pan_delta = Vec2::ZERO;
+
+        if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
+            pan_delta += mouse_delta_position();
+            self.active_touch_id = None;
+            self.last_touch_pos = None;
+        } else if let Some(touch_delta) = self.touch_drag_delta() {
+            pan_delta += touch_delta;
+        } else {
+            self.active_touch_id = None;
+            self.last_touch_pos = None;
+        }
+
+        if pan_delta.length_squared() > 0.0 {
+            let pixel_delta = vec2(
+                -pan_delta.x * screen_width() * 0.5,
+                -pan_delta.y * screen_height() * 0.5,
+            ) * DRAG_PAN_SCALE;
+            self.offset += pixel_delta;
+        }
+
+        let (wheel_x, wheel_y) = mouse_wheel();
+        if wheel_x.abs() > 0.0 || wheel_y.abs() > 0.0 {
+            // Trackpads emit wheel deltas for two-finger drags.
+            self.offset += vec2(wheel_x, wheel_y) * -SCROLL_PAN_SPEED;
+        }
+    }
+
+    fn touch_drag_delta(&mut self) -> Option<Vec2> {
+        let mut touches = touches_local();
+        if touches.is_empty() {
+            return None;
+        }
+
+        touches.sort_by_key(|touch| touch.id);
+
+        let active = if let Some(id) = self.active_touch_id {
+            touches.into_iter().find(|touch| touch.id == id)
+        } else {
+            touches.into_iter().find(|touch| {
+                matches!(
+                    touch.phase,
+                    TouchPhase::Started | TouchPhase::Moved | TouchPhase::Stationary
+                )
+            })
+        };
+
+        let touch = active?;
+
+        match touch.phase {
+            TouchPhase::Started => {
+                self.active_touch_id = Some(touch.id);
+                self.last_touch_pos = Some(touch.position);
+                None
+            }
+            TouchPhase::Moved | TouchPhase::Stationary => {
+                self.active_touch_id = Some(touch.id);
+                let delta = self.last_touch_pos.map(|last| last - touch.position);
+                self.last_touch_pos = Some(touch.position);
+                delta
+            }
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                if self.active_touch_id == Some(touch.id) {
+                    self.active_touch_id = None;
+                    self.last_touch_pos = None;
+                }
+                None
+            }
+        }
+    }
+}
+
 #[macroquad::main("Dustfall Isometric Checkered Plane")]
 async fn main() {
     let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
     let tiles = TileSet::load().await;
+    let mut camera = IsoCamera::new(&map);
 
     loop {
+        camera.update();
         clear_background(Color::from_rgba(15, 18, 27, 255));
 
         let anchor = vec2(screen_width() * 0.5, screen_height() * 0.4);
-        draw_plane(anchor, &map, &tiles);
+        draw_plane(anchor, &map, &tiles, &camera);
 
-        draw_text(
-            "Macroquad textured plane (press Esc to exit)",
-            16.0,
-            34.0,
-            28.0,
-            WHITE,
-        );
+        draw_text("Drag mouse/touchpad to pan", 16.0, 34.0, 28.0, WHITE);
 
         next_frame().await;
     }
 }
 
-fn draw_plane(anchor: Vec2, map: &TileMap, tiles: &TileSet) {
+fn draw_plane(anchor: Vec2, map: &TileMap, tiles: &TileSet, camera: &IsoCamera) {
     let diag_count = map.width + map.height - 1;
     for diag in 0..diag_count {
         let x_min = diag.saturating_sub(map.height - 1);
@@ -91,7 +179,7 @@ fn draw_plane(anchor: Vec2, map: &TileMap, tiles: &TileSet) {
 
         for x in x_min..=x_max {
             let y = diag - x;
-            let center = iso_to_screen(x as f32, y as f32, anchor);
+            let center = iso_to_screen(x as f32, y as f32, camera, anchor);
             let tile_index = map.tile_index(x, y);
             draw_tile(center, tile_index, tiles);
         }
@@ -113,7 +201,11 @@ fn draw_tile(center: Vec2, tile_index: usize, tiles: &TileSet) {
     );
 }
 
-fn iso_to_screen(x: f32, y: f32, anchor: Vec2) -> Vec2 {
-    let iso = vec2((x - y) * TILE_WIDTH * 0.5, (x + y) * TILE_HEIGHT * 0.5);
-    iso + anchor
+fn iso_to_screen(x: f32, y: f32, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
+    let iso = iso_coords(x, y);
+    (iso - camera.offset) + anchor
+}
+
+fn iso_coords(x: f32, y: f32) -> Vec2 {
+    vec2((x - y) * TILE_WIDTH * 0.5, (x + y) * TILE_HEIGHT * 0.5)
 }
