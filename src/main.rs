@@ -65,98 +65,14 @@ struct IsoCamera {
     last_touch_pos: Option<Vec2>,
 }
 
-impl IsoCamera {
-    fn new(map: &TileMap) -> Self {
-        let center = vec2(map.width as f32 * 0.5, map.height as f32 * 0.5);
-        let iso_center = iso_coords(center.x, center.y);
-        Self {
-            offset: iso_center,
-            active_touch_id: None,
-            last_touch_pos: None,
-        }
-    }
-
-    fn update(&mut self) {
-        let mut pan_delta = Vec2::ZERO;
-
-        if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
-            pan_delta += mouse_delta_position();
-            self.active_touch_id = None;
-            self.last_touch_pos = None;
-        } else if let Some(touch_delta) = self.touch_drag_delta() {
-            pan_delta += touch_delta;
-        } else {
-            self.active_touch_id = None;
-            self.last_touch_pos = None;
-        }
-
-        if pan_delta.length_squared() > 0.0 {
-            let pixel_delta = vec2(
-                -pan_delta.x * screen_width() * 0.5,
-                -pan_delta.y * screen_height() * 0.5,
-            ) * DRAG_PAN_SCALE;
-            self.offset += pixel_delta;
-        }
-
-        let (wheel_x, wheel_y) = mouse_wheel();
-        if wheel_x.abs() > 0.0 || wheel_y.abs() > 0.0 {
-            // Trackpads emit wheel deltas for two-finger drags.
-            self.offset += vec2(wheel_x, wheel_y) * -SCROLL_PAN_SPEED;
-        }
-    }
-
-    fn touch_drag_delta(&mut self) -> Option<Vec2> {
-        let mut touches = touches_local();
-        if touches.is_empty() {
-            return None;
-        }
-
-        touches.sort_by_key(|touch| touch.id);
-
-        let active = if let Some(id) = self.active_touch_id {
-            touches.into_iter().find(|touch| touch.id == id)
-        } else {
-            touches.into_iter().find(|touch| {
-                matches!(
-                    touch.phase,
-                    TouchPhase::Started | TouchPhase::Moved | TouchPhase::Stationary
-                )
-            })
-        };
-
-        let touch = active?;
-
-        match touch.phase {
-            TouchPhase::Started => {
-                self.active_touch_id = Some(touch.id);
-                self.last_touch_pos = Some(touch.position);
-                None
-            }
-            TouchPhase::Moved | TouchPhase::Stationary => {
-                self.active_touch_id = Some(touch.id);
-                let delta = self.last_touch_pos.map(|last| last - touch.position);
-                self.last_touch_pos = Some(touch.position);
-                delta
-            }
-            TouchPhase::Ended | TouchPhase::Cancelled => {
-                if self.active_touch_id == Some(touch.id) {
-                    self.active_touch_id = None;
-                    self.last_touch_pos = None;
-                }
-                None
-            }
-        }
-    }
-}
-
 #[macroquad::main("Dustfall Isometric Checkered Plane")]
 async fn main() {
     let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
     let tiles = TileSet::load().await;
-    let mut camera = IsoCamera::new(&map);
+    let mut camera = create_camera(&map);
 
     loop {
-        camera.update();
+        update_camera(&mut camera);
         clear_background(Color::from_rgba(15, 18, 27, 255));
 
         let anchor = vec2(screen_width() * 0.5, screen_height() * 0.4);
@@ -208,4 +124,85 @@ fn iso_to_screen(x: f32, y: f32, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
 
 fn iso_coords(x: f32, y: f32) -> Vec2 {
     vec2((x - y) * TILE_WIDTH * 0.5, (x + y) * TILE_HEIGHT * 0.5)
+}
+
+fn create_camera(map: &TileMap) -> IsoCamera {
+    let center = vec2(map.width as f32 * 0.5, map.height as f32 * 0.5);
+    let iso_center = iso_coords(center.x, center.y);
+    IsoCamera {
+        offset: iso_center,
+        active_touch_id: None,
+        last_touch_pos: None,
+    }
+}
+
+fn update_camera(camera: &mut IsoCamera) {
+    let mut pan_delta = Vec2::ZERO;
+
+    if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
+        pan_delta += mouse_delta_position();
+        camera.active_touch_id = None;
+        camera.last_touch_pos = None;
+    } else if let Some(touch_delta) = camera_touch_drag_delta(camera) {
+        pan_delta += touch_delta;
+    } else {
+        camera.active_touch_id = None;
+        camera.last_touch_pos = None;
+    }
+
+    if pan_delta.length_squared() > 0.0 {
+        let pixel_delta = vec2(
+            -pan_delta.x * screen_width() * 0.5,
+            -pan_delta.y * screen_height() * 0.5,
+        ) * DRAG_PAN_SCALE;
+        camera.offset += pixel_delta;
+    }
+
+    let (wheel_x, wheel_y) = mouse_wheel();
+    if wheel_x.abs() > 0.0 || wheel_y.abs() > 0.0 {
+        camera.offset += vec2(wheel_x, wheel_y) * -SCROLL_PAN_SPEED;
+    }
+}
+
+fn camera_touch_drag_delta(camera: &mut IsoCamera) -> Option<Vec2> {
+    let mut touches = touches_local();
+    if touches.is_empty() {
+        return None;
+    }
+
+    touches.sort_by_key(|touch| touch.id);
+
+    let active = if let Some(id) = camera.active_touch_id {
+        touches.into_iter().find(|touch| touch.id == id)
+    } else {
+        touches.into_iter().find(|touch| {
+            matches!(
+                touch.phase,
+                TouchPhase::Started | TouchPhase::Moved | TouchPhase::Stationary
+            )
+        })
+    };
+
+    let touch = active?;
+
+    match touch.phase {
+        TouchPhase::Started => {
+            camera.active_touch_id = Some(touch.id);
+            camera.last_touch_pos = Some(touch.position);
+            None
+        }
+        TouchPhase::Moved | TouchPhase::Stationary => {
+            camera.active_touch_id = Some(touch.id);
+            let delta = camera.last_touch_pos.map(|last| last - touch.position);
+            camera.last_touch_pos = Some(touch.position);
+            delta
+        }
+        TouchPhase::Ended | TouchPhase::Cancelled => {
+            if camera.active_touch_id == Some(touch.id) {
+                camera.active_touch_id = None;
+                camera.last_touch_pos = None;
+            }
+            None
+        }
+    }
 }
