@@ -65,7 +65,7 @@ struct IsoCamera {
     last_touch_pos: Option<Vec2>,
 }
 
-#[macroquad::main("Dustfall Isometric Checkered Plane")]
+#[macroquad::main("Dustfal")]
 async fn main() {
     let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
     let tiles = TileSet::load().await;
