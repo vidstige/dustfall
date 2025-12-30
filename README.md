@@ -1,14 +1,12 @@
-## Dustfall Macroquad Prototype
+## Dustfall
 
-This crate is a playground for rendering an isometric grid using the lightweight `macroquad` game library.
+An isometric dark-planet survival toy built with Rust and `macroquad`. The prototype focuses on low-fi pixel art, procedural tiles, and quick iteration on camera/rendering experiments.
 
 ### Run
 
 ```bash
 cargo run
 ```
-
-That launches a window with a pseudo-random textured plane to validate rendering and camera math. Close the window or press `Esc` to exit.
 
 ### Controls
 
