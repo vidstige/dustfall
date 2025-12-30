@@ -220,23 +220,8 @@ fn draw_plane(
     batch: &mut TileBatch,
 ) {
     batch.begin(atlas.texture());
-    let bounds = compute_visible_bounds(map, camera, anchor);
-    for diag in bounds.diag_min..=bounds.diag_max {
-        let diag = diag as usize;
-        let mut x_min = diag.saturating_sub(map.height - 1);
-        let mut x_max = diag.min(map.width - 1);
-        x_min = x_min.max(bounds.x_min);
-        x_max = x_max.min(bounds.x_max);
-        if x_min > x_max {
-            continue;
-        }
-
-        for x in x_min..=x_max {
-            let y = diag - x;
-            if y < bounds.y_min || y > bounds.y_max {
-                continue;
-            }
-
+    for y in 0..map.height {
+        for x in 0..map.width {
             let center = iso_to_screen(x as f32, y as f32, camera, anchor);
             let tile_index = map.tile_index(x, y);
             let uv = atlas.uv_rect(tile_index);
@@ -253,82 +238,6 @@ fn iso_to_screen(x: f32, y: f32, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
 
 fn iso_coords(x: f32, y: f32) -> Vec2 {
     vec2((x - y) * TILE_WIDTH * 0.5, (x + y) * TILE_HEIGHT * 0.5)
-}
-
-struct VisibleTileBounds {
-    x_min: usize,
-    x_max: usize,
-    y_min: usize,
-    y_max: usize,
-    diag_min: usize,
-    diag_max: usize,
-}
-
-fn compute_visible_bounds(map: &TileMap, camera: &IsoCamera, anchor: Vec2) -> VisibleTileBounds {
-    let corners = [
-        vec2(0.0, 0.0),
-        vec2(screen_width(), 0.0),
-        vec2(0.0, screen_height()),
-        vec2(screen_width(), screen_height()),
-    ];
-
-    let mut min_x = f32::INFINITY;
-    let mut max_x = f32::NEG_INFINITY;
-    let mut min_y = f32::INFINITY;
-    let mut max_y = f32::NEG_INFINITY;
-
-    for corner in corners {
-        let iso = screen_to_iso(corner, camera, anchor);
-        let tile = iso_to_tile_coords(iso);
-        min_x = min_x.min(tile.x);
-        max_x = max_x.max(tile.x);
-        min_y = min_y.min(tile.y);
-        max_y = max_y.max(tile.y);
-    }
-
-    if !min_x.is_finite() {
-        return VisibleTileBounds {
-            x_min: 0,
-            x_max: map.width.saturating_sub(1),
-            y_min: 0,
-            y_max: map.height.saturating_sub(1),
-            diag_min: 0,
-            diag_max: map.width + map.height - 2,
-        };
-    }
-
-    let margin = 4.0;
-    let width_limit = (map.width.saturating_sub(1)) as f32;
-    let height_limit = (map.height.saturating_sub(1)) as f32;
-
-    let x_min = ((min_x - margin).floor()).max(0.0).min(width_limit) as usize;
-    let x_max = ((max_x + margin).ceil()).max(0.0).min(width_limit) as usize;
-    let y_min = ((min_y - margin).floor()).max(0.0).min(height_limit) as usize;
-    let y_max = ((max_y + margin).ceil()).max(0.0).min(height_limit) as usize;
-
-    let diag_min = x_min.saturating_add(y_min);
-    let diag_max = (x_max + y_max).min(map.width + map.height - 2);
-
-    VisibleTileBounds {
-        x_min,
-        x_max,
-        y_min,
-        y_max,
-        diag_min,
-        diag_max,
-    }
-}
-
-fn screen_to_iso(screen: Vec2, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
-    screen - anchor + camera.offset
-}
-
-fn iso_to_tile_coords(iso: Vec2) -> Vec2 {
-    let half_w = TILE_WIDTH * 0.5;
-    let half_h = TILE_HEIGHT * 0.5;
-    let x = (iso.y / half_h + iso.x / half_w) * 0.5;
-    let y = (iso.y / half_h - iso.x / half_w) * 0.5;
-    vec2(x, y)
 }
 
 fn create_camera(map: &TileMap) -> IsoCamera {
