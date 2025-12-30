@@ -1,14 +1,16 @@
+use macroquad::miniquad;
 use macroquad::models::{draw_mesh, Mesh, Vertex};
 use macroquad::prelude::*;
 use macroquad::texture::{load_image, FilterMode, Image};
 
-const GRID_WIDTH: usize = 16;
-const GRID_HEIGHT: usize = 16;
+const GRID_WIDTH: usize = 256;
+const GRID_HEIGHT: usize = 256;
 const TILE_WIDTH: f32 = 64.0;
 const TILE_HEIGHT: f32 = 32.0;
 const TILE_VARIANTS: usize = 32;
 const ATLAS_COLUMNS: usize = 8;
 const ATLAS_ROWS: usize = (TILE_VARIANTS + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS;
+const CHUNK_SIZE: usize = 64;
 const SCROLL_PAN_SPEED: f32 = 4.0;
 const DRAG_PAN_SCALE: f32 = 0.45;
 
@@ -192,7 +194,19 @@ impl TileBatch {
     }
 }
 
-#[macroquad::main("dustfal")]
+fn window_conf() -> macroquad::conf::Conf {
+    macroquad::conf::Conf {
+        miniquad_conf: miniquad::conf::Conf {
+            window_title: "dustfal".to_owned(),
+            ..Default::default()
+        },
+        draw_call_vertex_capacity: 200_000,
+        draw_call_index_capacity: 300_000,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
     let atlas = TileAtlas::load().await;
@@ -219,16 +233,62 @@ fn draw_plane(
     camera: &IsoCamera,
     batch: &mut TileBatch,
 ) {
-    batch.begin(atlas.texture());
-    for y in 0..map.height {
-        for x in 0..map.width {
-            let center = iso_to_screen(x as f32, y as f32, camera, anchor);
-            let tile_index = map.tile_index(x, y);
-            let uv = atlas.uv_rect(tile_index);
-            batch.push_tile(center, uv);
+    let chunk_cols = (map.width + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    let chunk_rows = (map.height + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    let chunk_diag_count = chunk_cols + chunk_rows - 1;
+
+    for chunk_diag in 0..chunk_diag_count {
+        let chunk_x_start = chunk_diag.saturating_sub(chunk_rows - 1);
+        let chunk_x_end = chunk_diag.min(chunk_cols - 1);
+
+        for chunk_x in chunk_x_start..=chunk_x_end {
+            let chunk_y = chunk_diag - chunk_x;
+            if chunk_y >= chunk_rows {
+                continue;
+            }
+
+            let x_start = chunk_x * CHUNK_SIZE;
+            let y_start = chunk_y * CHUNK_SIZE;
+            let x_end = (x_start + CHUNK_SIZE).min(map.width);
+            let y_end = (y_start + CHUNK_SIZE).min(map.height);
+
+            if x_start >= x_end || y_start >= y_end {
+                continue;
+            }
+
+            batch.begin(atlas.texture());
+
+            let x_last = x_end - 1;
+            let y_last = y_end - 1;
+            let diag_start = x_start + y_start;
+            let diag_end = x_last + y_last;
+
+            for diag in diag_start..=diag_end {
+                let mut tile_x_min = diag.saturating_sub(y_last);
+                if tile_x_min < x_start {
+                    tile_x_min = x_start;
+                }
+                let tile_x_max = diag.min(x_last);
+                if tile_x_min > tile_x_max {
+                    continue;
+                }
+
+                for x in tile_x_min..=tile_x_max {
+                    let y = diag - x;
+                    if y < y_start || y > y_last {
+                        continue;
+                    }
+
+                    let center = iso_to_screen(x as f32, y as f32, camera, anchor);
+                    let tile_index = map.tile_index(x, y);
+                    let uv = atlas.uv_rect(tile_index);
+                    batch.push_tile(center, uv);
+                }
+            }
+
+            batch.draw();
         }
     }
-    batch.draw();
 }
 
 fn iso_to_screen(x: f32, y: f32, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
