@@ -13,6 +13,10 @@ const ATLAS_ROWS: usize = (TILE_VARIANTS + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS;
 const CHUNK_SIZE: usize = 64;
 const SCROLL_PAN_SPEED: f32 = 4.0;
 const DRAG_PAN_SCALE: f32 = 0.45;
+const VERTICES_PER_TILE: usize = 4;
+const INDICES_PER_TILE: usize = 6;
+const MAX_MESH_VERTICES: usize = u16::MAX as usize;
+const MAX_MESH_INDICES: usize = u16::MAX as usize;
 
 struct TileMap {
     width: usize,
@@ -22,6 +26,12 @@ struct TileMap {
 
 impl TileMap {
     fn new(width: usize, height: usize, seed: u32) -> Self {
+        assert!(
+            width > 0 && height > 0,
+            "TileMap must have positive width and height (got {}x{})",
+            width,
+            height
+        );
         let mut value = seed;
         let mut indices = Vec::with_capacity(width * height);
         for _ in 0..width * height {
@@ -151,15 +161,27 @@ impl TileBatch {
         }
     }
 
-    fn begin(&mut self, texture: &Texture2D) {
+    fn begin(&mut self, texture: &Texture2D, _origin: (usize, usize), _dims: (usize, usize)) {
         self.mesh.vertices.clear();
         self.mesh.indices.clear();
         self.mesh.texture = Some(texture.clone());
     }
 
     fn push_tile(&mut self, center: Vec2, uv_rect: Rect) {
-        if self.mesh.vertices.len() > u16::MAX as usize - 4 {
-            return;
+        let next_vertices = self.mesh.vertices.len() + VERTICES_PER_TILE;
+        if next_vertices > MAX_MESH_VERTICES {
+            panic!(
+                "Chunk exceeds vertex budget ({}). Reduce CHUNK_SIZE (currently {}).",
+                MAX_MESH_VERTICES, CHUNK_SIZE
+            );
+        }
+
+        let next_indices = self.mesh.indices.len() + INDICES_PER_TILE;
+        if next_indices > MAX_MESH_INDICES {
+            panic!(
+                "Chunk exceeds index budget ({}). Reduce CHUNK_SIZE (currently {}).",
+                MAX_MESH_INDICES, CHUNK_SIZE
+            );
         }
 
         let half_w = TILE_WIDTH * 0.5;
@@ -208,6 +230,7 @@ fn window_conf() -> macroquad::conf::Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    ensure_chunk_size_safe();
     let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
     let atlas = TileAtlas::load().await;
     let mut camera = create_camera(&map);
@@ -256,7 +279,11 @@ fn draw_plane(
                 continue;
             }
 
-            batch.begin(atlas.texture());
+            batch.begin(
+                atlas.texture(),
+                (x_start, y_start),
+                (x_end - x_start, y_end - y_start),
+            );
 
             let x_last = x_end - 1;
             let y_last = y_end - 1;
@@ -298,6 +325,21 @@ fn iso_to_screen(x: f32, y: f32, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
 
 fn iso_coords(x: f32, y: f32) -> Vec2 {
     vec2((x - y) * TILE_WIDTH * 0.5, (x + y) * TILE_HEIGHT * 0.5)
+}
+
+fn ensure_chunk_size_safe() {
+    let max_tiles_by_vertices = MAX_MESH_VERTICES / VERTICES_PER_TILE;
+    let max_tiles_by_indices = MAX_MESH_INDICES / INDICES_PER_TILE;
+    let max_tiles = max_tiles_by_vertices.min(max_tiles_by_indices);
+    let chunk_tiles = CHUNK_SIZE * CHUNK_SIZE;
+    assert!(
+        chunk_tiles <= max_tiles,
+        "CHUNK_SIZE {} creates {} tiles per chunk, exceeding mesh capacity {}. Reduce CHUNK_SIZE ({} or less).",
+        CHUNK_SIZE,
+        chunk_tiles,
+        max_tiles,
+        (max_tiles as f64).sqrt().floor() as usize
+    );
 }
 
 fn create_camera(map: &TileMap) -> IsoCamera {
