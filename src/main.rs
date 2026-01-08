@@ -11,8 +11,14 @@ const TILE_VARIANTS: usize = 32;
 const ATLAS_COLUMNS: usize = 8;
 const ATLAS_ROWS: usize = (TILE_VARIANTS + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS;
 const CHUNK_SIZE: usize = 64;
-const SCROLL_PAN_SPEED: f32 = 4.0;
 const DRAG_PAN_SCALE: f32 = 0.45;
+const INITIAL_ZOOM: f32 = 80.0;
+const MIN_ZOOM: f32 = 15.0;
+const MAX_ZOOM: f32 = 400.0;
+const CAMERA_HEIGHT: f32 = 120.0;
+const CAMERA_DISTANCE: f32 = 160.0;
+const TILE_WORLD_WIDTH: f32 = 1.0;
+const TILE_WORLD_DEPTH: f32 = 1.0;
 const VERTICES_PER_TILE: usize = 4;
 const INDICES_PER_TILE: usize = 6;
 const MAX_MESH_VERTICES: usize = u16::MAX as usize;
@@ -141,9 +147,10 @@ fn blit_image(dest: &mut Image, src: &Image, offset_x: u32, offset_y: u32) {
 }
 
 struct IsoCamera {
-    offset: Vec2,
+    target: Vec2,
     active_touch_id: Option<u64>,
     last_touch_pos: Option<Vec2>,
+    zoom: f32,
 }
 
 struct TileBatch {
@@ -184,13 +191,13 @@ impl TileBatch {
             );
         }
 
-        let half_w = TILE_WIDTH * 0.5;
-        let half_h = TILE_HEIGHT * 0.5;
+        let half_w = TILE_WORLD_WIDTH * 0.5;
+        let half_d = TILE_WORLD_DEPTH * 0.5;
 
-        let top_left = center + vec2(-half_w, -half_h);
-        let top_right = center + vec2(half_w, -half_h);
-        let bottom_right = center + vec2(half_w, half_h);
-        let bottom_left = center + vec2(-half_w, half_h);
+        let top_left = vec3(center.x - half_w, 0.0, center.y - half_d);
+        let top_right = vec3(center.x + half_w, 0.0, center.y - half_d);
+        let bottom_right = vec3(center.x + half_w, 0.0, center.y + half_d);
+        let bottom_left = vec3(center.x - half_w, 0.0, center.y + half_d);
 
         let u0 = uv_rect.x;
         let v0 = uv_rect.y;
@@ -199,10 +206,17 @@ impl TileBatch {
 
         let base = self.mesh.vertices.len() as u16;
         self.mesh.vertices.extend_from_slice(&[
-            Vertex::new(top_left.x, top_left.y, 0.0, u0, v0, WHITE),
-            Vertex::new(top_right.x, top_right.y, 0.0, u1, v0, WHITE),
-            Vertex::new(bottom_right.x, bottom_right.y, 0.0, u1, v1, WHITE),
-            Vertex::new(bottom_left.x, bottom_left.y, 0.0, u0, v1, WHITE),
+            Vertex::new(top_left.x, top_left.y, top_left.z, u0, v0, WHITE),
+            Vertex::new(top_right.x, top_right.y, top_right.z, u1, v0, WHITE),
+            Vertex::new(
+                bottom_right.x,
+                bottom_right.y,
+                bottom_right.z,
+                u1,
+                v1,
+                WHITE,
+            ),
+            Vertex::new(bottom_left.x, bottom_left.y, bottom_left.z, u0, v1, WHITE),
         ]);
         self.mesh
             .indices
@@ -240,8 +254,10 @@ async fn main() {
         update_camera(&mut camera);
         clear_background(Color::from_rgba(15, 18, 27, 255));
 
-        let anchor = vec2(screen_width() * 0.5, screen_height() * 0.4);
-        draw_plane(anchor, &map, &atlas, &camera, &mut batch);
+        let camera3d = build_camera(&map, &camera);
+        set_camera(&camera3d);
+        draw_plane(&map, &atlas, &mut batch);
+        set_default_camera();
 
         draw_text("Drag mouse/touchpad to pan", 16.0, 34.0, 28.0, WHITE);
 
@@ -249,13 +265,7 @@ async fn main() {
     }
 }
 
-fn draw_plane(
-    anchor: Vec2,
-    map: &TileMap,
-    atlas: &TileAtlas,
-    camera: &IsoCamera,
-    batch: &mut TileBatch,
-) {
+fn draw_plane(map: &TileMap, atlas: &TileAtlas, batch: &mut TileBatch) {
     let chunk_cols = (map.width + CHUNK_SIZE - 1) / CHUNK_SIZE;
     let chunk_rows = (map.height + CHUNK_SIZE - 1) / CHUNK_SIZE;
     let chunk_diag_count = chunk_cols + chunk_rows - 1;
@@ -306,7 +316,7 @@ fn draw_plane(
                         continue;
                     }
 
-                    let center = iso_to_screen(x as f32, y as f32, camera, anchor);
+                    let center = vec2(x as f32 + 0.5, y as f32 + 0.5);
                     let tile_index = map.tile_index(x, y);
                     let uv = atlas.uv_rect(tile_index);
                     batch.push_tile(center, uv);
@@ -316,15 +326,6 @@ fn draw_plane(
             batch.draw();
         }
     }
-}
-
-fn iso_to_screen(x: f32, y: f32, camera: &IsoCamera, anchor: Vec2) -> Vec2 {
-    let iso = iso_coords(x, y);
-    (iso - camera.offset) + anchor
-}
-
-fn iso_coords(x: f32, y: f32) -> Vec2 {
-    vec2((x - y) * TILE_WIDTH * 0.5, (x + y) * TILE_HEIGHT * 0.5)
 }
 
 fn ensure_chunk_size_safe() {
@@ -343,12 +344,15 @@ fn ensure_chunk_size_safe() {
 }
 
 fn create_camera(map: &TileMap) -> IsoCamera {
-    let center = vec2(map.width as f32 * 0.5, map.height as f32 * 0.5);
-    let iso_center = iso_coords(center.x, center.y);
+    let center = vec2(
+        map_center_component(map.width),
+        map_center_component(map.height),
+    );
     IsoCamera {
-        offset: iso_center,
+        target: center,
         active_touch_id: None,
         last_touch_pos: None,
+        zoom: INITIAL_ZOOM,
     }
 }
 
@@ -367,16 +371,20 @@ fn update_camera(camera: &mut IsoCamera) {
     }
 
     if pan_delta.length_squared() > 0.0 {
-        let pixel_delta = vec2(
-            -pan_delta.x * screen_width() * 0.5,
-            -pan_delta.y * screen_height() * 0.5,
-        ) * DRAG_PAN_SCALE;
-        camera.offset += pixel_delta;
+        let aspect = screen_width() / screen_height();
+        let view_height = camera.zoom;
+        let view_width = view_height * aspect;
+        let world_delta = vec2(
+            pan_delta.x * view_width * 0.5 * DRAG_PAN_SCALE,
+            -pan_delta.y * view_height * 0.5 * DRAG_PAN_SCALE,
+        );
+        camera.target -= world_delta;
     }
 
-    let (wheel_x, wheel_y) = mouse_wheel();
-    if wheel_x.abs() > 0.0 || wheel_y.abs() > 0.0 {
-        camera.offset += vec2(wheel_x, wheel_y) * -SCROLL_PAN_SPEED;
+    let (_, wheel_y) = mouse_wheel();
+    if wheel_y.abs() > 0.0 {
+        let zoom_factor = 1.0 - wheel_y * 0.08;
+        camera.zoom = (camera.zoom * zoom_factor).clamp(MIN_ZOOM, MAX_ZOOM);
     }
 }
 
@@ -420,5 +428,31 @@ fn camera_touch_drag_delta(camera: &mut IsoCamera) -> Option<Vec2> {
             }
             None
         }
+    }
+}
+
+fn map_center_component(size: usize) -> f32 {
+    if size == 0 {
+        0.0
+    } else {
+        (size.saturating_sub(1)) as f32 * 0.5
+    }
+}
+
+fn build_camera(map: &TileMap, state: &IsoCamera) -> Camera3D {
+    let target = vec3(state.target.x, 0.0, state.target.y);
+    let map_span = map.width.max(map.height) as f32;
+    let orbit = map_span.max(1.0) * (CAMERA_DISTANCE / 100.0);
+    let position = target + vec3(-orbit, CAMERA_HEIGHT, orbit);
+
+    Camera3D {
+        position,
+        target,
+        up: vec3(0.0, 1.0, 0.0),
+        fovy: state.zoom,
+        projection: Projection::Orthographics,
+        z_near: -1000.0,
+        z_far: 1000.0,
+        ..Default::default()
     }
 }
