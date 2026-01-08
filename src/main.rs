@@ -1,458 +1,92 @@
-use macroquad::miniquad;
 use macroquad::models::{draw_mesh, Mesh, Vertex};
 use macroquad::prelude::*;
-use macroquad::texture::{load_image, FilterMode, Image};
 
-const GRID_WIDTH: usize = 256;
-const GRID_HEIGHT: usize = 256;
-const TILE_WIDTH: f32 = 64.0;
-const TILE_HEIGHT: f32 = 32.0;
-const TILE_VARIANTS: usize = 32;
-const ATLAS_COLUMNS: usize = 8;
-const ATLAS_ROWS: usize = (TILE_VARIANTS + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS;
-const CHUNK_SIZE: usize = 64;
-const DRAG_PAN_SCALE: f32 = 0.45;
-const INITIAL_ZOOM: f32 = 80.0;
-const MIN_ZOOM: f32 = 15.0;
-const MAX_ZOOM: f32 = 400.0;
-const CAMERA_HEIGHT: f32 = 120.0;
-const CAMERA_DISTANCE: f32 = 160.0;
-const TILE_WORLD_WIDTH: f32 = 1.0;
-const TILE_WORLD_DEPTH: f32 = 1.0;
-const VERTICES_PER_TILE: usize = 4;
-const INDICES_PER_TILE: usize = 6;
-const MAX_MESH_VERTICES: usize = u16::MAX as usize;
-const MAX_MESH_INDICES: usize = u16::MAX as usize;
+const GRID_WIDTH: usize = 16;
+const GRID_HEIGHT: usize = 16;
+const TILE_WORLD_SIZE: f32 = 1.0;
 
-struct TileMap {
-    width: usize,
-    height: usize,
-    indices: Vec<u8>,
-}
-
-impl TileMap {
-    fn new(width: usize, height: usize, seed: u32) -> Self {
-        assert!(
-            width > 0 && height > 0,
-            "TileMap must have positive width and height (got {}x{})",
-            width,
-            height
-        );
-        let mut value = seed;
-        let mut indices = Vec::with_capacity(width * height);
-        for _ in 0..width * height {
-            value = value.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            indices.push((value % TILE_VARIANTS as u32) as u8);
-        }
-
-        Self {
-            width,
-            height,
-            indices,
-        }
-    }
-
-    fn tile_index(&self, x: usize, y: usize) -> usize {
-        self.indices[y * self.width + x] as usize
-    }
-}
-
-struct TileAtlas {
-    texture: Texture2D,
-    columns: usize,
-    tile_w: f32,
-    tile_h: f32,
-    atlas_w: f32,
-    atlas_h: f32,
-}
-
-impl TileAtlas {
-    async fn load() -> Self {
-        let mut tile_images = Vec::with_capacity(TILE_VARIANTS);
-        for idx in 0..TILE_VARIANTS {
-            let path = format!("images/tiles/{}.png", idx);
-            let image = load_image(&path)
-                .await
-                .unwrap_or_else(|e| panic!("Failed to load {}: {}", path, e));
-            tile_images.push(image);
-        }
-
-        let tile_w = tile_images
-            .get(0)
-            .map(|img| img.width() as u32)
-            .unwrap_or(TILE_WIDTH as u32);
-        let tile_h = tile_images
-            .get(0)
-            .map(|img| img.height() as u32)
-            .unwrap_or(TILE_HEIGHT as u32);
-
-        let atlas_w = (ATLAS_COLUMNS as u32) * tile_w;
-        let atlas_h = (ATLAS_ROWS as u32) * tile_h;
-        let mut atlas_image = Image::gen_image_color(
-            atlas_w as u16,
-            atlas_h as u16,
-            Color::new(0.0, 0.0, 0.0, 0.0),
-        );
-
-        for (idx, image) in tile_images.iter().enumerate() {
-            let col = (idx % ATLAS_COLUMNS) as u32;
-            let row = (idx / ATLAS_COLUMNS) as u32;
-            blit_image(&mut atlas_image, image, col * tile_w, row * tile_h);
-        }
-
-        let texture = Texture2D::from_image(&atlas_image);
-        texture.set_filter(FilterMode::Nearest);
-
-        Self {
-            texture,
-            columns: ATLAS_COLUMNS,
-            tile_w: tile_w as f32,
-            tile_h: tile_h as f32,
-            atlas_w: atlas_w as f32,
-            atlas_h: atlas_h as f32,
-        }
-    }
-
-    fn texture(&self) -> &Texture2D {
-        &self.texture
-    }
-
-    fn uv_rect(&self, index: usize) -> Rect {
-        let col = (index % self.columns) as f32;
-        let row = (index / self.columns) as f32;
-        let u0 = (col * self.tile_w) / self.atlas_w;
-        let v0 = (row * self.tile_h) / self.atlas_h;
-        let u1 = ((col + 1.0) * self.tile_w) / self.atlas_w;
-        let v1 = ((row + 1.0) * self.tile_h) / self.atlas_h;
-
-        Rect {
-            x: u0,
-            y: v0,
-            w: u1 - u0,
-            h: v1 - v0,
-        }
-    }
-}
-
-fn blit_image(dest: &mut Image, src: &Image, offset_x: u32, offset_y: u32) {
-    let width = src.width() as u32;
-    let height = src.height() as u32;
-
-    for y in 0..height {
-        for x in 0..width {
-            let color = src.get_pixel(x, y);
-            dest.set_pixel(offset_x + x, offset_y + y, color);
-        }
-    }
-}
-
-struct IsoCamera {
-    target: Vec2,
-    active_touch_id: Option<u64>,
-    last_touch_pos: Option<Vec2>,
-    zoom: f32,
-}
-
-struct TileBatch {
-    mesh: Mesh,
-}
-
-impl TileBatch {
-    fn new() -> Self {
-        Self {
-            mesh: Mesh {
-                vertices: Vec::new(),
-                indices: Vec::new(),
-                texture: None,
-            },
-        }
-    }
-
-    fn begin(&mut self, texture: &Texture2D, _origin: (usize, usize), _dims: (usize, usize)) {
-        self.mesh.vertices.clear();
-        self.mesh.indices.clear();
-        self.mesh.texture = Some(texture.clone());
-    }
-
-    fn push_tile(&mut self, center: Vec2, uv_rect: Rect) {
-        let next_vertices = self.mesh.vertices.len() + VERTICES_PER_TILE;
-        if next_vertices > MAX_MESH_VERTICES {
-            panic!(
-                "Chunk exceeds vertex budget ({}). Reduce CHUNK_SIZE (currently {}).",
-                MAX_MESH_VERTICES, CHUNK_SIZE
-            );
-        }
-
-        let next_indices = self.mesh.indices.len() + INDICES_PER_TILE;
-        if next_indices > MAX_MESH_INDICES {
-            panic!(
-                "Chunk exceeds index budget ({}). Reduce CHUNK_SIZE (currently {}).",
-                MAX_MESH_INDICES, CHUNK_SIZE
-            );
-        }
-
-        let half_w = TILE_WORLD_WIDTH * 0.5;
-        let half_d = TILE_WORLD_DEPTH * 0.5;
-
-        let top_left = vec3(center.x - half_w, 0.0, center.y - half_d);
-        let top_right = vec3(center.x + half_w, 0.0, center.y - half_d);
-        let bottom_right = vec3(center.x + half_w, 0.0, center.y + half_d);
-        let bottom_left = vec3(center.x - half_w, 0.0, center.y + half_d);
-
-        let u0 = uv_rect.x;
-        let v0 = uv_rect.y;
-        let u1 = uv_rect.x + uv_rect.w;
-        let v1 = uv_rect.y + uv_rect.h;
-
-        let base = self.mesh.vertices.len() as u16;
-        self.mesh.vertices.extend_from_slice(&[
-            Vertex::new(top_left.x, top_left.y, top_left.z, u0, v0, WHITE),
-            Vertex::new(top_right.x, top_right.y, top_right.z, u1, v0, WHITE),
-            Vertex::new(
-                bottom_right.x,
-                bottom_right.y,
-                bottom_right.z,
-                u1,
-                v1,
-                WHITE,
-            ),
-            Vertex::new(bottom_left.x, bottom_left.y, bottom_left.z, u0, v1, WHITE),
-        ]);
-        self.mesh
-            .indices
-            .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
-    }
-
-    fn draw(&self) {
-        if !self.mesh.vertices.is_empty() && !self.mesh.indices.is_empty() {
-            draw_mesh(&self.mesh);
-        }
-    }
-}
-
-fn window_conf() -> macroquad::conf::Conf {
-    macroquad::conf::Conf {
-        miniquad_conf: miniquad::conf::Conf {
-            window_title: "dustfal".to_owned(),
-            ..Default::default()
-        },
-        draw_call_vertex_capacity: 200_000,
-        draw_call_index_capacity: 300_000,
-        ..Default::default()
-    }
-}
-
-#[macroquad::main(window_conf)]
+#[macroquad::main("dustfal")]
 async fn main() {
-    ensure_chunk_size_safe();
-    let map = TileMap::new(GRID_WIDTH, GRID_HEIGHT, 42);
-    let atlas = TileAtlas::load().await;
-    let mut camera = create_camera(&map);
-    let mut batch = TileBatch::new();
+    let grid_mesh = build_grid_mesh();
 
     loop {
-        update_camera(&mut camera);
-        clear_background(Color::from_rgba(15, 18, 27, 255));
+        // Clear in screen space first
+        clear_background(Color::new(0.05, 0.05, 0.08, 1.0));
 
-        let camera3d = build_camera(&map, &camera);
-        set_camera(&camera3d);
-        draw_plane(&map, &atlas, &mut batch);
+        let iso_camera = Camera3D {
+            position: vec3(30.0, 30.0, 30.0),
+            target: vec3(0.0, 0.0, 0.0),
+            up: vec3(0.0, 1.0, 0.0),
+            projection: Projection::Orthographics,
+            fovy: 10.0,
+            ..Default::default()
+        };
+        set_camera(&iso_camera);
+
+        draw_mesh(&grid_mesh);
+
         set_default_camera();
-
-        draw_text("Drag mouse/touchpad to pan", 16.0, 34.0, 28.0, WHITE);
+        draw_text("Top-down checkerboard", 10.0, 28.0, 28.0, WHITE);
 
         next_frame().await;
     }
 }
 
-fn draw_plane(map: &TileMap, atlas: &TileAtlas, batch: &mut TileBatch) {
-    let chunk_cols = (map.width + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    let chunk_rows = (map.height + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    let chunk_diag_count = chunk_cols + chunk_rows - 1;
+fn build_grid_mesh() -> Mesh {
+    let mut vertices = Vec::with_capacity(GRID_WIDTH * GRID_HEIGHT * 4);
+    let mut indices = Vec::with_capacity(GRID_WIDTH * GRID_HEIGHT * 6);
 
-    for chunk_diag in 0..chunk_diag_count {
-        let chunk_x_start = chunk_diag.saturating_sub(chunk_rows - 1);
-        let chunk_x_end = chunk_diag.min(chunk_cols - 1);
+    let half_w = GRID_WIDTH as f32 * TILE_WORLD_SIZE * 0.5;
+    let half_h = GRID_HEIGHT as f32 * TILE_WORLD_SIZE * 0.5;
 
-        for chunk_x in chunk_x_start..=chunk_x_end {
-            let chunk_y = chunk_diag - chunk_x;
-            if chunk_y >= chunk_rows {
-                continue;
-            }
+    for y in 0..GRID_HEIGHT {
+        for x in 0..GRID_WIDTH {
+            let world_x = x as f32 * TILE_WORLD_SIZE - half_w;
+            let world_z = y as f32 * TILE_WORLD_SIZE - half_h;
+            let color = if (x + y) % 2 == 0 {
+                Color::new(0.85, 0.1, 0.75, 1.0)
+            } else {
+                Color::new(0.06, 0.06, 0.08, 1.0)
+            };
 
-            let x_start = chunk_x * CHUNK_SIZE;
-            let y_start = chunk_y * CHUNK_SIZE;
-            let x_end = (x_start + CHUNK_SIZE).min(map.width);
-            let y_end = (y_start + CHUNK_SIZE).min(map.height);
-
-            if x_start >= x_end || y_start >= y_end {
-                continue;
-            }
-
-            batch.begin(
-                atlas.texture(),
-                (x_start, y_start),
-                (x_end - x_start, y_end - y_start),
+            push_tile(
+                &mut vertices,
+                &mut indices,
+                world_x,
+                world_z,
+                TILE_WORLD_SIZE,
+                color,
             );
-
-            let x_last = x_end - 1;
-            let y_last = y_end - 1;
-            let diag_start = x_start + y_start;
-            let diag_end = x_last + y_last;
-
-            for diag in diag_start..=diag_end {
-                let mut tile_x_min = diag.saturating_sub(y_last);
-                if tile_x_min < x_start {
-                    tile_x_min = x_start;
-                }
-                let tile_x_max = diag.min(x_last);
-                if tile_x_min > tile_x_max {
-                    continue;
-                }
-
-                for x in tile_x_min..=tile_x_max {
-                    let y = diag - x;
-                    if y < y_start || y > y_last {
-                        continue;
-                    }
-
-                    let center = vec2(x as f32 + 0.5, y as f32 + 0.5);
-                    let tile_index = map.tile_index(x, y);
-                    let uv = atlas.uv_rect(tile_index);
-                    batch.push_tile(center, uv);
-                }
-            }
-
-            batch.draw();
         }
     }
-}
 
-fn ensure_chunk_size_safe() {
-    let max_tiles_by_vertices = MAX_MESH_VERTICES / VERTICES_PER_TILE;
-    let max_tiles_by_indices = MAX_MESH_INDICES / INDICES_PER_TILE;
-    let max_tiles = max_tiles_by_vertices.min(max_tiles_by_indices);
-    let chunk_tiles = CHUNK_SIZE * CHUNK_SIZE;
-    assert!(
-        chunk_tiles <= max_tiles,
-        "CHUNK_SIZE {} creates {} tiles per chunk, exceeding mesh capacity {}. Reduce CHUNK_SIZE ({} or less).",
-        CHUNK_SIZE,
-        chunk_tiles,
-        max_tiles,
-        (max_tiles as f64).sqrt().floor() as usize
-    );
-}
-
-fn create_camera(map: &TileMap) -> IsoCamera {
-    let center = vec2(
-        map_center_component(map.width),
-        map_center_component(map.height),
-    );
-    IsoCamera {
-        target: center,
-        active_touch_id: None,
-        last_touch_pos: None,
-        zoom: INITIAL_ZOOM,
+    Mesh {
+        vertices,
+        indices,
+        texture: None,
     }
 }
 
-fn update_camera(camera: &mut IsoCamera) {
-    let mut pan_delta = Vec2::ZERO;
+fn push_tile(
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u16>,
+    world_x: f32,
+    world_z: f32,
+    size: f32,
+    color: Color,
+) {
+    let x0 = world_x;
+    let z0 = world_z;
+    let x1 = world_x + size;
+    let z1 = world_z + size;
+    let y = 0.0;
 
-    if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
-        pan_delta += mouse_delta_position();
-        camera.active_touch_id = None;
-        camera.last_touch_pos = None;
-    } else if let Some(touch_delta) = camera_touch_drag_delta(camera) {
-        pan_delta += touch_delta;
-    } else {
-        camera.active_touch_id = None;
-        camera.last_touch_pos = None;
-    }
-
-    if pan_delta.length_squared() > 0.0 {
-        let aspect = screen_width() / screen_height();
-        let view_height = camera.zoom;
-        let view_width = view_height * aspect;
-        let world_delta = vec2(
-            pan_delta.x * view_width * 0.5 * DRAG_PAN_SCALE,
-            -pan_delta.y * view_height * 0.5 * DRAG_PAN_SCALE,
-        );
-        camera.target -= world_delta;
-    }
-
-    let (_, wheel_y) = mouse_wheel();
-    if wheel_y.abs() > 0.0 {
-        let zoom_factor = 1.0 - wheel_y * 0.08;
-        camera.zoom = (camera.zoom * zoom_factor).clamp(MIN_ZOOM, MAX_ZOOM);
-    }
-}
-
-fn camera_touch_drag_delta(camera: &mut IsoCamera) -> Option<Vec2> {
-    let mut touches = touches_local();
-    if touches.is_empty() {
-        return None;
-    }
-
-    touches.sort_by_key(|touch| touch.id);
-
-    let active = if let Some(id) = camera.active_touch_id {
-        touches.into_iter().find(|touch| touch.id == id)
-    } else {
-        touches.into_iter().find(|touch| {
-            matches!(
-                touch.phase,
-                TouchPhase::Started | TouchPhase::Moved | TouchPhase::Stationary
-            )
-        })
-    };
-
-    let touch = active?;
-
-    match touch.phase {
-        TouchPhase::Started => {
-            camera.active_touch_id = Some(touch.id);
-            camera.last_touch_pos = Some(touch.position);
-            None
-        }
-        TouchPhase::Moved | TouchPhase::Stationary => {
-            camera.active_touch_id = Some(touch.id);
-            let delta = camera.last_touch_pos.map(|last| last - touch.position);
-            camera.last_touch_pos = Some(touch.position);
-            delta
-        }
-        TouchPhase::Ended | TouchPhase::Cancelled => {
-            if camera.active_touch_id == Some(touch.id) {
-                camera.active_touch_id = None;
-                camera.last_touch_pos = None;
-            }
-            None
-        }
-    }
-}
-
-fn map_center_component(size: usize) -> f32 {
-    if size == 0 {
-        0.0
-    } else {
-        (size.saturating_sub(1)) as f32 * 0.5
-    }
-}
-
-fn build_camera(map: &TileMap, state: &IsoCamera) -> Camera3D {
-    let target = vec3(state.target.x, 0.0, state.target.y);
-    let map_span = map.width.max(map.height) as f32;
-    let orbit = map_span.max(1.0) * (CAMERA_DISTANCE / 100.0);
-    let position = target + vec3(-orbit, CAMERA_HEIGHT, orbit);
-
-    Camera3D {
-        position,
-        target,
-        up: vec3(0.0, 1.0, 0.0),
-        fovy: state.zoom,
-        projection: Projection::Orthographics,
-        z_near: -1000.0,
-        z_far: 1000.0,
-        ..Default::default()
-    }
+    let base = vertices.len() as u16;
+    vertices.extend_from_slice(&[
+        Vertex::new(x0, y, z0, 0.0, 0.0, color),
+        Vertex::new(x1, y, z0, 1.0, 0.0, color),
+        Vertex::new(x1, y, z1, 1.0, 1.0, color),
+        Vertex::new(x0, y, z1, 0.0, 1.0, color),
+    ]);
+    indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
