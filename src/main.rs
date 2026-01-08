@@ -10,7 +10,7 @@ struct TileMap {
     height: usize,
 }
 
-#[macroquad::main("dustfal")]
+#[macroquad::main("Dustfall")]
 async fn main() {
     let map = TileMap {
         width: GRID_WIDTH,
@@ -111,7 +111,8 @@ fn push_tile(
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
 
-const CAMERA_EYE_OFFSET: (f32, f32, f32) = (-1.0, 1.45, 1.0);
+// Camera pitch tuned so projected tiles appear with a classic 2:1 isometric ratio.
+const CAMERA_EYE_OFFSET: (f32, f32, f32) = (-1.0, 0.816_496_6, 1.0);
 const CAMERA_DISTANCE_SCALE: f32 = 2.2;
 
 fn build_camera(map: &TileMap, camera: &IsoCamera) -> Camera3D {
