@@ -5,9 +5,18 @@ const GRID_WIDTH: usize = 16;
 const GRID_HEIGHT: usize = 16;
 const TILE_WORLD_SIZE: f32 = 1.0;
 
+struct TileMap {
+    width: usize,
+    height: usize,
+}
+
 #[macroquad::main("dustfal")]
 async fn main() {
-    let grid_mesh = build_grid_mesh();
+    let map = TileMap {
+        width: GRID_WIDTH,
+        height: GRID_HEIGHT,
+    };
+    let grid_mesh = build_grid_mesh(&map);
 
     loop {
         // Clear in screen space first
@@ -32,15 +41,17 @@ async fn main() {
     }
 }
 
-fn build_grid_mesh() -> Mesh {
-    let mut vertices = Vec::with_capacity(GRID_WIDTH * GRID_HEIGHT * 4);
-    let mut indices = Vec::with_capacity(GRID_WIDTH * GRID_HEIGHT * 6);
+fn build_grid_mesh(map: &TileMap) -> Mesh {
+    let width = map.width;
+    let height = map.height;
+    let mut vertices = Vec::with_capacity(width * height * 4);
+    let mut indices = Vec::with_capacity(width * height * 6);
 
-    let half_w = GRID_WIDTH as f32 * TILE_WORLD_SIZE * 0.5;
-    let half_h = GRID_HEIGHT as f32 * TILE_WORLD_SIZE * 0.5;
+    let half_w = width as f32 * TILE_WORLD_SIZE * 0.5;
+    let half_h = height as f32 * TILE_WORLD_SIZE * 0.5;
 
-    for y in 0..GRID_HEIGHT {
-        for x in 0..GRID_WIDTH {
+    for y in 0..height {
+        for x in 0..width {
             let world_x = x as f32 * TILE_WORLD_SIZE - half_w;
             let world_z = y as f32 * TILE_WORLD_SIZE - half_h;
             let color = if (x + y) % 2 == 0 {
