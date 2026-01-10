@@ -1,9 +1,10 @@
 use macroquad::models::{draw_mesh, Mesh, Vertex};
 use macroquad::prelude::*;
 
-const GRID_WIDTH: usize = 16;
-const GRID_HEIGHT: usize = 16;
+const GRID_WIDTH: usize = 256;
+const GRID_HEIGHT: usize = 256;
 const TILE_WORLD_SIZE: f32 = 1.0;
+const CHUNK_SIZE: usize = 16;
 
 struct TileMap {
     width: usize,
@@ -24,7 +25,7 @@ async fn main() {
         last_touch_pos: None,
     };
 
-    let grid_mesh = build_grid_mesh(&map);
+    let grid_meshes = build_grid_meshes(&map);
 
     loop {
         // Clear in screen space first
@@ -35,7 +36,9 @@ async fn main() {
         let iso_camera = build_camera(&map, &camera_state);
         set_camera(&iso_camera);
 
-        draw_mesh(&grid_mesh);
+        for mesh in &grid_meshes {
+            draw_mesh(mesh);
+        }
 
         set_default_camera();
         draw_text(
@@ -50,20 +53,41 @@ async fn main() {
     }
 }
 
-fn build_grid_mesh(map: &TileMap) -> Mesh {
-    let width = map.width;
-    let height = map.height;
-    let mut vertices = Vec::with_capacity(width * height * 4);
-    let mut indices = Vec::with_capacity(width * height * 6);
+fn build_grid_meshes(map: &TileMap) -> Vec<Mesh> {
+    assert!(
+        map.width % CHUNK_SIZE == 0 && map.height % CHUNK_SIZE == 0,
+        "map dimensions must be divisible by chunk size"
+    );
 
-    let half_w = width as f32 * TILE_WORLD_SIZE * 0.5;
-    let half_h = height as f32 * TILE_WORLD_SIZE * 0.5;
+    let chunks_x = map.width / CHUNK_SIZE;
+    let chunks_y = map.height / CHUNK_SIZE;
+    let half_w = map.width as f32 * TILE_WORLD_SIZE * 0.5;
+    let half_h = map.height as f32 * TILE_WORLD_SIZE * 0.5;
 
-    for y in 0..height {
-        for x in 0..width {
-            let world_x = x as f32 * TILE_WORLD_SIZE - half_w;
-            let world_z = y as f32 * TILE_WORLD_SIZE - half_h;
-            let color = if (x + y) % 2 == 0 {
+    let mut meshes = Vec::with_capacity(chunks_x * chunks_y);
+    for chunk_y in 0..chunks_y {
+        for chunk_x in 0..chunks_x {
+            meshes.push(build_chunk_mesh(chunk_x, chunk_y, half_w, half_h));
+        }
+    }
+
+    meshes
+}
+
+fn build_chunk_mesh(chunk_x: usize, chunk_y: usize, half_w: f32, half_h: f32) -> Mesh {
+    let mut vertices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
+    let mut indices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 6);
+
+    let tile_x_start = chunk_x * CHUNK_SIZE;
+    let tile_y_start = chunk_y * CHUNK_SIZE;
+
+    for local_y in 0..CHUNK_SIZE {
+        for local_x in 0..CHUNK_SIZE {
+            let tile_x = tile_x_start + local_x;
+            let tile_y = tile_y_start + local_y;
+            let world_x = tile_x as f32 * TILE_WORLD_SIZE - half_w;
+            let world_z = tile_y as f32 * TILE_WORLD_SIZE - half_h;
+            let color = if (tile_x + tile_y) % 2 == 0 {
                 Color::new(0.85, 0.1, 0.75, 1.0)
             } else {
                 Color::new(0.06, 0.06, 0.08, 1.0)
