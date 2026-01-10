@@ -5,6 +5,7 @@ const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
 const TILE_WORLD_SIZE: f32 = 1.0;
 const CHUNK_SIZE: usize = 16;
+const TILE_TEXTURE_COUNT: usize = 32;
 
 struct TileMap {
     width: usize,
@@ -15,6 +16,7 @@ struct TileMap {
 #[macroquad::main("Dustfall")]
 async fn main() {
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
+    let _tile_textures = load_tile_textures(TILE_TEXTURE_COUNT).await;
 
     let mut camera_state = IsoCamera {
         target: Vec2::ZERO,
@@ -72,7 +74,13 @@ fn build_grid_meshes(map: &TileMap) -> Vec<Mesh> {
     meshes
 }
 
-fn build_chunk_mesh(map: &TileMap, chunk_x: usize, chunk_y: usize, half_w: f32, half_h: f32) -> Mesh {
+fn build_chunk_mesh(
+    map: &TileMap,
+    chunk_x: usize,
+    chunk_y: usize,
+    half_w: f32,
+    half_h: f32,
+) -> Mesh {
     let mut vertices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
     let mut indices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 6);
 
@@ -129,6 +137,20 @@ fn checker_board(width: usize, height: usize) -> TileMap {
         height,
         tiles,
     }
+}
+
+async fn load_tile_textures(count: usize) -> Vec<Texture2D> {
+    let mut textures = Vec::with_capacity(count);
+    for index in 0..count {
+        let path = format!("images/tiles/{}.png", index);
+        let texture = load_texture(&path)
+            .await
+            .unwrap_or_else(|err| panic!("failed to load {path}: {err}"));
+        texture.set_filter(FilterMode::Nearest);
+        textures.push(texture);
+    }
+
+    textures
 }
 
 fn push_tile(
