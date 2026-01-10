@@ -9,14 +9,12 @@ const CHUNK_SIZE: usize = 16;
 struct TileMap {
     width: usize,
     height: usize,
+    tiles: Vec<u8>,
 }
 
 #[macroquad::main("Dustfall")]
 async fn main() {
-    let map = TileMap {
-        width: GRID_WIDTH,
-        height: GRID_HEIGHT,
-    };
+    let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
 
     let mut camera_state = IsoCamera {
         target: Vec2::ZERO,
@@ -67,14 +65,14 @@ fn build_grid_meshes(map: &TileMap) -> Vec<Mesh> {
     let mut meshes = Vec::with_capacity(chunks_x * chunks_y);
     for chunk_y in 0..chunks_y {
         for chunk_x in 0..chunks_x {
-            meshes.push(build_chunk_mesh(chunk_x, chunk_y, half_w, half_h));
+            meshes.push(build_chunk_mesh(map, chunk_x, chunk_y, half_w, half_h));
         }
     }
 
     meshes
 }
 
-fn build_chunk_mesh(chunk_x: usize, chunk_y: usize, half_w: f32, half_h: f32) -> Mesh {
+fn build_chunk_mesh(map: &TileMap, chunk_x: usize, chunk_y: usize, half_w: f32, half_h: f32) -> Mesh {
     let mut vertices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
     let mut indices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 6);
 
@@ -87,10 +85,10 @@ fn build_chunk_mesh(chunk_x: usize, chunk_y: usize, half_w: f32, half_h: f32) ->
             let tile_y = tile_y_start + local_y;
             let world_x = tile_x as f32 * TILE_WORLD_SIZE - half_w;
             let world_z = tile_y as f32 * TILE_WORLD_SIZE - half_h;
-            let color = if (tile_x + tile_y) % 2 == 0 {
-                Color::new(0.85, 0.1, 0.75, 1.0)
-            } else {
-                Color::new(0.06, 0.06, 0.08, 1.0)
+            let tile_index = map.tile_index(tile_x, tile_y);
+            let color = match tile_index {
+                0 => Color::new(0.85, 0.1, 0.75, 1.0),
+                _ => Color::new(0.06, 0.06, 0.08, 1.0),
             };
 
             push_tile(
@@ -108,6 +106,28 @@ fn build_chunk_mesh(chunk_x: usize, chunk_y: usize, half_w: f32, half_h: f32) ->
         vertices,
         indices,
         texture: None,
+    }
+}
+
+impl TileMap {
+    fn tile_index(&self, x: usize, y: usize) -> u8 {
+        self.tiles[y * self.width + x]
+    }
+}
+
+fn checker_board(width: usize, height: usize) -> TileMap {
+    let mut tiles = Vec::with_capacity(width * height);
+    for y in 0..height {
+        for x in 0..width {
+            let tile_index = if (x + y) % 2 == 0 { 0 } else { 1 };
+            tiles.push(tile_index);
+        }
+    }
+
+    TileMap {
+        width,
+        height,
+        tiles,
     }
 }
 
