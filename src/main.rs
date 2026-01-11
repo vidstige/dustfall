@@ -5,7 +5,7 @@ const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
 const TILE_WORLD_SIZE: f32 = 1.0;
 const CHUNK_SIZE: usize = 16;
-const TILE_TEXTURE_COUNT: usize = 32;
+const TILE_ATLAS_COLUMNS: usize = 8;
 
 struct TileMap {
     width: usize,
@@ -13,10 +13,32 @@ struct TileMap {
     tiles: Vec<u8>,
 }
 
+struct TileAtlas {
+    texture: Texture2D,
+    columns: usize,
+    rows: usize,
+    tile_count: usize,
+}
+
+impl TileAtlas {
+    fn uv_bounds(&self, index: usize) -> (Vec2, Vec2) {
+        let tile_index = index % self.tile_count;
+        let column = tile_index % self.columns;
+        let row = tile_index / self.columns;
+        let u0 = column as f32 / self.columns as f32;
+        let v0 = row as f32 / self.rows as f32;
+        let u1 = (column + 1) as f32 / self.columns as f32;
+        let v1 = (row + 1) as f32 / self.rows as f32;
+
+        (vec2(u0, v0), vec2(u1, v1))
+    }
+}
+
 #[macroquad::main("Dustfall")]
 async fn main() {
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
-    let _tile_textures = load_tile_textures(TILE_TEXTURE_COUNT).await;
+    let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
+    print_tile_uvs(&tile_atlas);
 
     let mut camera_state = IsoCamera {
         target: Vec2::ZERO,
@@ -25,7 +47,7 @@ async fn main() {
         last_touch_pos: None,
     };
 
-    let grid_meshes = build_grid_meshes(&map);
+    let grid_meshes = build_grid_meshes(&map, &tile_atlas);
 
     loop {
         // Clear in screen space first
@@ -53,7 +75,7 @@ async fn main() {
     }
 }
 
-fn build_grid_meshes(map: &TileMap) -> Vec<Mesh> {
+fn build_grid_meshes(map: &TileMap, atlas: &TileAtlas) -> Vec<Mesh> {
     assert!(
         map.width % CHUNK_SIZE == 0 && map.height % CHUNK_SIZE == 0,
         "map dimensions must be divisible by chunk size"
@@ -67,7 +89,9 @@ fn build_grid_meshes(map: &TileMap) -> Vec<Mesh> {
     let mut meshes = Vec::with_capacity(chunks_x * chunks_y);
     for chunk_y in 0..chunks_y {
         for chunk_x in 0..chunks_x {
-            meshes.push(build_chunk_mesh(map, chunk_x, chunk_y, half_w, half_h));
+            meshes.push(build_chunk_mesh(
+                map, atlas, chunk_x, chunk_y, half_w, half_h,
+            ));
         }
     }
 
@@ -76,6 +100,7 @@ fn build_grid_meshes(map: &TileMap) -> Vec<Mesh> {
 
 fn build_chunk_mesh(
     map: &TileMap,
+    atlas: &TileAtlas,
     chunk_x: usize,
     chunk_y: usize,
     half_w: f32,
@@ -93,11 +118,8 @@ fn build_chunk_mesh(
             let tile_y = tile_y_start + local_y;
             let world_x = tile_x as f32 * TILE_WORLD_SIZE - half_w;
             let world_z = tile_y as f32 * TILE_WORLD_SIZE - half_h;
-            let tile_index = map.tile_index(tile_x, tile_y);
-            let color = match tile_index {
-                0 => Color::new(0.85, 0.1, 0.75, 1.0),
-                _ => Color::new(0.06, 0.06, 0.08, 1.0),
-            };
+            let tile_index = map.tile_index(tile_x, tile_y) as usize;
+            let (uv_min, uv_max) = atlas.uv_bounds(tile_index);
 
             push_tile(
                 &mut vertices,
@@ -105,7 +127,8 @@ fn build_chunk_mesh(
                 world_x,
                 world_z,
                 TILE_WORLD_SIZE,
-                color,
+                uv_min,
+                uv_max,
             );
         }
     }
@@ -113,7 +136,7 @@ fn build_chunk_mesh(
     Mesh {
         vertices,
         indices,
-        texture: None,
+        texture: Some(atlas.texture.clone()),
     }
 }
 
@@ -139,18 +162,49 @@ fn checker_board(width: usize, height: usize) -> TileMap {
     }
 }
 
-async fn load_tile_textures(count: usize) -> Vec<Texture2D> {
-    let mut textures = Vec::with_capacity(count);
-    for index in 0..count {
-        let path = format!("images/tiles/{}.png", index);
-        let texture = load_texture(&path)
-            .await
-            .unwrap_or_else(|err| panic!("failed to load {path}: {err}"));
-        texture.set_filter(FilterMode::Nearest);
-        textures.push(texture);
-    }
+async fn load_tile_atlas(path: &str, columns: usize) -> TileAtlas {
+    assert!(columns > 0, "tile atlas columns must be non-zero");
 
-    textures
+    let atlas = load_image(path)
+        .await
+        .unwrap_or_else(|err| panic!("failed to load {path}: {err}"));
+    let width = atlas.width as usize;
+    let height = atlas.height as usize;
+    let tile_width = width / columns;
+    assert!(tile_width > 0, "tile atlas width is too small");
+    assert!(
+        width % columns == 0,
+        "tile atlas width must be divisible by columns"
+    );
+    assert!(
+        height % tile_width == 0,
+        "tile atlas height must be divisible by tile width"
+    );
+    let rows = height / tile_width;
+    let tile_count = columns * rows;
+
+    let texture = Texture2D::from_image(&atlas);
+    texture.set_filter(FilterMode::Nearest);
+
+    TileAtlas {
+        texture,
+        columns,
+        rows,
+        tile_count,
+    }
+}
+
+fn print_tile_uvs(atlas: &TileAtlas) {
+    let (uv_min_0, uv_max_0) = atlas.uv_bounds(0);
+    let (uv_min_1, uv_max_1) = atlas.uv_bounds(1);
+    println!(
+        "tile 0 uv: min ({:.4}, {:.4}) max ({:.4}, {:.4})",
+        uv_min_0.x, uv_min_0.y, uv_max_0.x, uv_max_0.y
+    );
+    println!(
+        "tile 1 uv: min ({:.4}, {:.4}) max ({:.4}, {:.4})",
+        uv_min_1.x, uv_min_1.y, uv_max_1.x, uv_max_1.y
+    );
 }
 
 fn push_tile(
@@ -159,7 +213,8 @@ fn push_tile(
     world_x: f32,
     world_z: f32,
     size: f32,
-    color: Color,
+    uv_min: Vec2,
+    uv_max: Vec2,
 ) {
     let x0 = world_x;
     let z0 = world_z;
@@ -169,10 +224,10 @@ fn push_tile(
 
     let base = vertices.len() as u16;
     vertices.extend_from_slice(&[
-        Vertex::new(x0, y, z0, 0.0, 0.0, color),
-        Vertex::new(x1, y, z0, 1.0, 0.0, color),
-        Vertex::new(x1, y, z1, 1.0, 1.0, color),
-        Vertex::new(x0, y, z1, 0.0, 1.0, color),
+        Vertex::new(x0, y, z0, uv_min.x, uv_min.y, WHITE),
+        Vertex::new(x1, y, z0, uv_max.x, uv_min.y, WHITE),
+        Vertex::new(x1, y, z1, uv_max.x, uv_max.y, WHITE),
+        Vertex::new(x0, y, z1, uv_min.x, uv_max.y, WHITE),
     ]);
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
