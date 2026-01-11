@@ -42,7 +42,6 @@ impl TileAtlas {
 async fn main() {
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
     let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
-    print_tile_uvs(&tile_atlas);
 
     let mut camera_state = IsoCamera::new(Vec2::ZERO, INITIAL_ZOOM);
 
@@ -191,19 +190,6 @@ async fn load_tile_atlas(path: &str, columns: usize) -> TileAtlas {
         rows,
         tile_count,
     }
-}
-
-fn print_tile_uvs(atlas: &TileAtlas) {
-    let (uv_min_0, uv_max_0) = atlas.uv_bounds(0);
-    let (uv_min_1, uv_max_1) = atlas.uv_bounds(1);
-    println!(
-        "tile 0 uv: min ({:.4}, {:.4}) max ({:.4}, {:.4})",
-        uv_min_0.x, uv_min_0.y, uv_max_0.x, uv_max_0.y
-    );
-    println!(
-        "tile 1 uv: min ({:.4}, {:.4}) max ({:.4}, {:.4})",
-        uv_min_1.x, uv_min_1.y, uv_max_1.x, uv_max_1.y
-    );
 }
 
 fn push_tile(
