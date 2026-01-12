@@ -7,25 +7,6 @@ impl ContainerId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ContainerPath {
-    parts: Vec<ContainerId>,
-}
-
-impl ContainerPath {
-    pub fn new(parts: Vec<ContainerId>) -> Self {
-        Self { parts }
-    }
-
-    pub fn root(root: ContainerId) -> Self {
-        Self { parts: vec![root] }
-    }
-
-    pub fn parts(&self) -> &[ContainerId] {
-        &self.parts
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Volume(i32);
 
@@ -92,12 +73,12 @@ impl Container {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pipe {
-    pub a: ContainerPath,
-    pub b: ContainerPath,
+    pub a: ContainerId,
+    pub b: ContainerId,
 }
 
 impl Pipe {
-    pub fn new(a: ContainerPath, b: ContainerPath) -> Self {
+    pub fn new(a: ContainerId, b: ContainerId) -> Self {
         Self { a, b }
     }
 }
@@ -148,42 +129,8 @@ impl Engine {
         &self.pipes
     }
 
-    pub fn add_pipe(&mut self, a: ContainerPath, b: ContainerPath) {
+    pub fn add_pipe(&mut self, a: ContainerId, b: ContainerId) {
         self.pipes.push(Pipe::new(a, b));
-    }
-
-    pub fn add_pipe_between(&mut self, a: ContainerId, b: ContainerId) {
-        let a_path = self.path_to(a);
-        let b_path = self.path_to(b);
-        self.add_pipe(a_path, b_path);
-    }
-
-    pub fn path_to(&self, id: ContainerId) -> ContainerPath {
-        let mut parts = Vec::new();
-        let mut current = Some(id);
-        while let Some(container_id) = current {
-            parts.push(container_id);
-            current = self.containers[container_id.index()].parent;
-        }
-        parts.reverse();
-        ContainerPath::new(parts)
-    }
-
-    pub fn resolve_path(&self, path: &ContainerPath) -> Option<ContainerId> {
-        let mut iter = path.parts().iter().copied();
-        let root = iter.next()?;
-        if root != self.root {
-            return None;
-        }
-        let mut current = root;
-        for next in iter {
-            let container = &self.containers[current.index()];
-            if !container.children.contains(&next) {
-                return None;
-            }
-            current = next;
-        }
-        Some(current)
     }
 
     fn insert_container(
