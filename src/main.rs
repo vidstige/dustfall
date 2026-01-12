@@ -5,6 +5,7 @@ mod engine;
 mod isometric;
 mod texture_atlas;
 
+use engine::{Engine, Gas, Volume};
 use isometric::{build_camera, update_camera, IsoCamera, INITIAL_ZOOM};
 use texture_atlas::{load_tile_atlas, TileAtlas};
 
@@ -22,6 +23,10 @@ struct TileMap {
 
 #[macroquad::main("Dustfall")]
 async fn main() {
+    let mut engine = Engine::new(Volume::new(1000), Gas::new(210, 780));
+    let root = engine.root();
+    let _base = engine.add_container(root, Volume::new(100), Gas::new(350, 50));
+
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
     let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
 

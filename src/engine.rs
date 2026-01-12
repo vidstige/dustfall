@@ -36,16 +36,14 @@ impl Gas {
 pub struct Container {
     volume: Volume,
     gas: Gas,
-    parent: Option<ContainerId>,
     children: Vec<ContainerId>,
 }
 
 impl Container {
-    fn new(volume: Volume, gas: Gas, parent: Option<ContainerId>) -> Self {
+    fn new(volume: Volume, gas: Gas) -> Self {
         Self {
             volume,
             gas,
-            parent,
             children: Vec::new(),
         }
     }
@@ -60,10 +58,6 @@ impl Container {
 
     pub fn gas_mut(&mut self) -> &mut Gas {
         &mut self.gas
-    }
-
-    pub fn parent(&self) -> Option<ContainerId> {
-        self.parent
     }
 
     pub fn children(&self) -> &[ContainerId] {
@@ -97,7 +91,7 @@ impl Engine {
             pipes: Vec::new(),
             root: ContainerId(0),
         };
-        let id = engine.insert_container(volume, gas, None);
+        let id = engine.insert_container(volume, gas);
         engine.root = id;
         engine
     }
@@ -112,7 +106,7 @@ impl Engine {
         volume: Volume,
         gas: Gas,
     ) -> ContainerId {
-        let id = self.insert_container(volume, gas, Some(parent));
+        let id = self.insert_container(volume, gas);
         self.containers[parent.index()].children.push(id);
         id
     }
@@ -133,14 +127,9 @@ impl Engine {
         self.pipes.push(Pipe::new(a, b));
     }
 
-    fn insert_container(
-        &mut self,
-        volume: Volume,
-        gas: Gas,
-        parent: Option<ContainerId>,
-    ) -> ContainerId {
+    fn insert_container(&mut self, volume: Volume, gas: Gas) -> ContainerId {
         let id = ContainerId(self.containers.len());
-        self.containers.push(Container::new(volume, gas, parent));
+        self.containers.push(Container::new(volume, gas));
         id
     }
 }
