@@ -1,6 +1,7 @@
 use macroquad::models::{draw_mesh, Mesh, Vertex};
 use macroquad::prelude::*;
 
+mod engine;
 mod isometric;
 mod texture_atlas;
 
