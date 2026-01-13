@@ -24,13 +24,13 @@ impl Volume {
 // Amounts are in integer "moles" (amount-of-substance units), not mass.
 pub struct Gas {
     // These amounts drive partial pressure when divided by volume.
-    pub o: i32,
+    pub o2: i32,
     pub co2: i32,
 }
 
 impl Gas {
-    pub fn new(o: i32, co2: i32) -> Self {
-        Self { o, co2 }
+    pub fn new(o2: i32, co2: i32) -> Self {
+        Self { o2, co2 }
     }
 
     pub fn partial_pressure(amount: i32, volume: Volume) -> i32 {
@@ -38,7 +38,7 @@ impl Gas {
     }
 
     pub fn pressure(&self, volume: Volume) -> i32 {
-        Self::partial_pressure(self.o, volume) + Self::partial_pressure(self.co2, volume)
+        Self::partial_pressure(self.o2, volume) + Self::partial_pressure(self.co2, volume)
     }
 }
 
