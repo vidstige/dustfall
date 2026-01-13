@@ -1,6 +1,7 @@
 use dustfall::engine::{
     add_human, add_moxie, add_photosynthesis, gas_from_parts, Engine, Fluid, Gas, Solid, Volume,
 };
+use dustfall::units::PressureScale;
 
 fn thin_atmosphere(volume: Volume, pressure: i32) -> Gas {
     // The reported composition is a volume (molar) ratio, so we treat it as mole fractions.
@@ -16,11 +17,10 @@ fn main() {
         .and_then(|value| value.parse().ok())
         .unwrap_or(10);
 
-    let root_volume = Volume::new(1000);
-    let root_pressure = 10;
+    let scale = PressureScale::new(100.0);
     let mut engine = Engine::new(
-        root_volume,
-        thin_atmosphere(root_volume, root_pressure),
+        Volume::new(1000),
+        thin_atmosphere(Volume::new(1000), scale.pressure_for_parts(800.0)),
         Fluid { h2o: 0 },
         Solid { ch2o: 0 },
     );
