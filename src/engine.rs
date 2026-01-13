@@ -26,7 +26,6 @@ pub struct Gas {
     // These amounts drive partial pressure when divided by volume.
     pub o2: i32,
     pub co2: i32,
-    pub co: i32,
 }
 
 impl Gas {
@@ -37,17 +36,15 @@ impl Gas {
     pub fn pressure(&self, volume: Volume) -> i32 {
         Self::partial_pressure(self.o2, volume)
             + Self::partial_pressure(self.co2, volume)
-            + Self::partial_pressure(self.co, volume)
     }
 
     pub fn can_apply_delta(&self, delta: Gas) -> bool {
-        self.o2 + delta.o2 >= 0 && self.co2 + delta.co2 >= 0 && self.co + delta.co >= 0
+        self.o2 + delta.o2 >= 0 && self.co2 + delta.co2 >= 0
     }
 
     pub fn apply_delta(&mut self, delta: Gas) {
         self.o2 += delta.o2;
         self.co2 += delta.co2;
-        self.co += delta.co;
     }
 }
 
@@ -110,6 +107,13 @@ impl Reaction {
     fn new(container: ContainerId, delta: Gas) -> Self {
         Self { container, delta }
     }
+
+    fn check(&self) -> bool {
+        let delta = self.delta;
+        // Carbon is treated as open-system for now, so only oxygen is conserved.
+        let oxygen = (delta.o2 + delta.co2) * 2;
+        oxygen == 0
+    }
 }
 
 #[derive(Debug)]
@@ -170,7 +174,9 @@ impl Engine {
         delta: Gas,
     ) {
         // Use negative values to consume gases.
-        self.reactions.push(Reaction::new(container, delta));
+        let reaction = Reaction::new(container, delta);
+        assert!(reaction.check(), "reaction is not oxygen-balanced");
+        self.reactions.push(reaction);
     }
 
     pub fn tick(&mut self) {
@@ -197,7 +203,6 @@ pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) 
         Gas {
             o2: -o2_per_tick,
             co2: o2_per_tick,
-            co: 0,
         },
     );
 }
@@ -207,17 +212,14 @@ pub fn add_moxie(
     container: ContainerId,
     co2_per_tick: i32,
     o2_per_tick: i32,
-    co_per_tick: i32,
 ) {
     assert!(co2_per_tick >= 0, "co2_per_tick must be non-negative");
     assert!(o2_per_tick >= 0, "o2_per_tick must be non-negative");
-    assert!(co_per_tick >= 0, "co_per_tick must be non-negative");
     engine.add_reaction(
         container,
         Gas {
             o2: o2_per_tick,
             co2: -co2_per_tick,
-            co: co_per_tick,
         },
     );
 }
