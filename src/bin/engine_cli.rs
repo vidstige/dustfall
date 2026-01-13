@@ -41,18 +41,13 @@ fn main() {
     add_photosynthesis(&mut engine, habitat, 2);
     add_moxie(&mut engine, habitat, 2);
 
-    println!(
-        "tick 0: atmosphere={} Pa, habitat={} Pa",
-        scale.to_pascal(engine.container(root).pressure()),
-        scale.to_pascal(engine.container(habitat).pressure())
-    );
-    for tick in 1..=ticks {
-        engine.tick();
+    for tick in 0..ticks {
         println!(
             "tick {}: atmosphere={} Pa, habitat={} Pa",
             tick,
             scale.to_pascal(engine.container(root).pressure()),
             scale.to_pascal(engine.container(habitat).pressure())
         );
+        engine.tick();
     }
 }
