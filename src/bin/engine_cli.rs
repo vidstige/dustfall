@@ -29,8 +29,8 @@ fn main() {
         root,
         Volume::new(100),
         Gas {
-            o2: 2000,
-            co2: 8000,
+            o2: 20_200,
+            co2: 80_800,
             co: 0,
             h2o: 0,
         },
@@ -41,9 +41,18 @@ fn main() {
     add_photosynthesis(&mut engine, habitat, 2);
     add_moxie(&mut engine, habitat, 2);
 
-    println!("tick 0: {:?}", engine.container(habitat));
+    println!(
+        "tick 0: atmosphere={} Pa, habitat={} Pa",
+        scale.to_pascal(engine.container(root).pressure()),
+        scale.to_pascal(engine.container(habitat).pressure())
+    );
     for tick in 1..=ticks {
         engine.tick();
-        println!("tick {}: {:?}", tick, engine.container(habitat));
+        println!(
+            "tick {}: atmosphere={} Pa, habitat={} Pa",
+            tick,
+            scale.to_pascal(engine.container(root).pressure()),
+            scale.to_pascal(engine.container(habitat).pressure())
+        );
     }
 }
