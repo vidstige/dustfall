@@ -313,3 +313,23 @@ pub fn add_photosynthesis(
         Solid { ch2o: co2_per_tick },
     );
 }
+
+pub fn add_moxie(engine: &mut Engine, container: ContainerId, co2_per_tick: i32) {
+    assert!(co2_per_tick >= 0, "co2_per_tick must be non-negative");
+    assert!(
+        co2_per_tick % 2 == 0,
+        "co2_per_tick must be even for 2 CO2 -> 2 CO + O2"
+    );
+    let o2_per_tick = co2_per_tick / 2;
+    engine.add_reaction(
+        container,
+        Gas {
+            o2: o2_per_tick,
+            co2: -co2_per_tick,
+            co: co2_per_tick,
+            h2o: 0,
+        },
+        Fluid { h2o: 0 },
+        Solid { ch2o: 0 },
+    );
+}
