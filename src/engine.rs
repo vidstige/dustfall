@@ -26,19 +26,34 @@ pub struct Gas {
     // These amounts drive partial pressure when divided by volume.
     pub o2: i32,
     pub co2: i32,
+    pub co: i32,
 }
 
 impl Gas {
-    pub fn new(o2: i32, co2: i32) -> Self {
-        Self { o2, co2 }
-    }
-
     pub fn partial_pressure(amount: i32, volume: Volume) -> i32 {
         amount / volume.value()
     }
 
     pub fn pressure(&self, volume: Volume) -> i32 {
-        Self::partial_pressure(self.o2, volume) + Self::partial_pressure(self.co2, volume)
+        Self::partial_pressure(self.o2, volume)
+            + Self::partial_pressure(self.co2, volume)
+            + Self::partial_pressure(self.co, volume)
+    }
+
+    pub fn can_consume(&self, other: Gas) -> bool {
+        self.o2 >= other.o2 && self.co2 >= other.co2 && self.co >= other.co
+    }
+
+    pub fn consume(&mut self, other: Gas) {
+        self.o2 -= other.o2;
+        self.co2 -= other.co2;
+        self.co -= other.co;
+    }
+
+    pub fn produce(&mut self, other: Gas) {
+        self.o2 += other.o2;
+        self.co2 += other.co2;
+        self.co += other.co;
     }
 }
 
@@ -91,10 +106,34 @@ impl Pipe {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Reaction {
+    container: ContainerId,
+    consumes: Gas,
+    produces: Gas,
+}
+
+impl Reaction {
+    fn new(container: ContainerId, consumes: Gas, produces: Gas) -> Self {
+        assert!(consumes.o2 >= 0, "consumes.o2 must be non-negative");
+        assert!(consumes.co2 >= 0, "consumes.co2 must be non-negative");
+        assert!(consumes.co >= 0, "consumes.co must be non-negative");
+        assert!(produces.o2 >= 0, "produces.o2 must be non-negative");
+        assert!(produces.co2 >= 0, "produces.co2 must be non-negative");
+        assert!(produces.co >= 0, "produces.co must be non-negative");
+        Self {
+            container,
+            consumes,
+            produces,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Engine {
     containers: Vec<Container>,
     pipes: Vec<Pipe>,
+    reactions: Vec<Reaction>,
     root: ContainerId,
 }
 
@@ -103,6 +142,7 @@ impl Engine {
         let mut engine = Self {
             containers: Vec::new(),
             pipes: Vec::new(),
+            reactions: Vec::new(),
             root: ContainerId(0),
         };
         let id = engine.insert_container(volume, gas);
@@ -141,9 +181,68 @@ impl Engine {
         self.pipes.push(Pipe::new(a, b));
     }
 
+    pub fn add_reaction(
+        &mut self,
+        container: ContainerId,
+        consumes: Gas,
+        produces: Gas,
+    ) {
+        self.reactions
+            .push(Reaction::new(container, consumes, produces));
+    }
+
+    pub fn tick(&mut self) {
+        for reaction in self.reactions.iter().copied() {
+            let container = &mut self.containers[reaction.container.index()];
+            if !container.gas.can_consume(reaction.consumes) {
+                continue;
+            }
+            container.gas.consume(reaction.consumes);
+            container.gas.produce(reaction.produces);
+        }
+    }
+
     fn insert_container(&mut self, volume: Volume, gas: Gas) -> ContainerId {
         let id = ContainerId(self.containers.len());
         self.containers.push(Container::new(volume, gas));
         id
     }
+}
+
+pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) {
+    engine.add_reaction(
+        container,
+        Gas {
+            o2: o2_per_tick,
+            co2: 0,
+            co: 0,
+        },
+        Gas {
+            o2: 0,
+            co2: o2_per_tick,
+            co: 0,
+        },
+    );
+}
+
+pub fn add_moxie(
+    engine: &mut Engine,
+    container: ContainerId,
+    co2_per_tick: i32,
+    o2_per_tick: i32,
+    co_per_tick: i32,
+) {
+    engine.add_reaction(
+        container,
+        Gas {
+            o2: 0,
+            co2: co2_per_tick,
+            co: 0,
+        },
+        Gas {
+            o2: o2_per_tick,
+            co2: 0,
+            co: co_per_tick,
+        },
+    );
 }
