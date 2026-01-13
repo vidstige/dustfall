@@ -101,40 +101,8 @@ impl Container {
         }
     }
 
-    pub fn volume(&self) -> Volume {
-        self.volume
-    }
-
-    pub fn gas(&self) -> Gas {
-        self.gas
-    }
-
-    pub fn gas_mut(&mut self) -> &mut Gas {
-        &mut self.gas
-    }
-
-    pub fn fluid(&self) -> Fluid {
-        self.fluid
-    }
-
-    pub fn fluid_mut(&mut self) -> &mut Fluid {
-        &mut self.fluid
-    }
-
-    pub fn solid(&self) -> Solid {
-        self.solid
-    }
-
-    pub fn solid_mut(&mut self) -> &mut Solid {
-        &mut self.solid
-    }
-
     pub fn pressure(&self) -> i32 {
         self.gas.pressure(self.volume)
-    }
-
-    pub fn children(&self) -> &[ContainerId] {
-        &self.children
     }
 }
 
