@@ -51,6 +51,40 @@ impl Gas {
     }
 }
 
+pub fn gas_from_parts(
+    volume: Volume,
+    pressure: i32,
+    o2_parts: i32,
+    co2_parts: i32,
+    h2o_parts: i32,
+    divisor: i32,
+) -> Gas {
+    assert!(volume.value() > 0, "volume must be positive");
+    assert!(pressure >= 0, "pressure must be non-negative");
+    assert!(o2_parts >= 0, "o2_parts must be non-negative");
+    assert!(co2_parts >= 0, "co2_parts must be non-negative");
+    assert!(h2o_parts >= 0, "h2o_parts must be non-negative");
+    assert!(divisor > 0, "divisor must be positive");
+
+    let total = pressure * volume.value();
+    let sum = o2_parts + co2_parts + h2o_parts;
+
+    let raw_o2 = total * o2_parts;
+    let raw_co2 = total * co2_parts;
+    let raw_h2o = total * h2o_parts;
+
+    let o2 = raw_o2 / divisor;
+    let co2 = raw_co2 / divisor;
+    let h2o = raw_h2o / divisor;
+    // Note: We floor each component, so the sum can be slightly below the intended total.
+
+    Gas {
+        o2,
+        co2,
+        h2o,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fluid {
     pub h2o: i32,
