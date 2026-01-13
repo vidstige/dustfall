@@ -31,6 +31,7 @@ fn main() {
         Gas {
             o2: 2000,
             co2: 8000,
+            co: 0,
             h2o: 0,
         },
         Fluid { h2o: 0 },

@@ -26,6 +26,7 @@ pub struct Gas {
     // These amounts drive partial pressure when divided by volume.
     pub o2: i32,
     pub co2: i32,
+    pub co: i32,
     pub h2o: i32,
 }
 
@@ -37,16 +38,21 @@ impl Gas {
     pub fn pressure(&self, volume: Volume) -> i32 {
         Self::partial_pressure(self.o2, volume)
             + Self::partial_pressure(self.co2, volume)
+            + Self::partial_pressure(self.co, volume)
             + Self::partial_pressure(self.h2o, volume)
     }
 
     pub fn can_apply_delta(&self, delta: Gas) -> bool {
-        self.o2 + delta.o2 >= 0 && self.co2 + delta.co2 >= 0 && self.h2o + delta.h2o >= 0
+        self.o2 + delta.o2 >= 0
+            && self.co2 + delta.co2 >= 0
+            && self.co + delta.co >= 0
+            && self.h2o + delta.h2o >= 0
     }
 
     pub fn apply_delta(&mut self, delta: Gas) {
         self.o2 += delta.o2;
         self.co2 += delta.co2;
+        self.co += delta.co;
         self.h2o += delta.h2o;
     }
 }
@@ -67,8 +73,6 @@ pub fn gas_from_parts(
     assert!(divisor > 0, "divisor must be positive");
 
     let total = pressure * volume.value();
-    let sum = o2_parts + co2_parts + h2o_parts;
-
     let raw_o2 = total * o2_parts;
     let raw_co2 = total * co2_parts;
     let raw_h2o = total * h2o_parts;
@@ -78,11 +82,7 @@ pub fn gas_from_parts(
     let h2o = raw_h2o / divisor;
     // Note: We floor each component, so the sum can be slightly below the intended total.
 
-    Gas {
-        o2,
-        co2,
-        h2o,
-    }
+    Gas { o2, co2, co: 0, h2o }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -175,10 +175,10 @@ impl Reaction {
         let fluid = self.fluid_delta;
         let solid = self.solid_delta;
 
-        let carbon = gas.co2 + solid.ch2o;
+        let carbon = gas.co2 + gas.co + solid.ch2o;
         let hydrogen = 2 * (gas.h2o + fluid.h2o + solid.ch2o);
         let oxygen =
-            2 * gas.o2 + 2 * gas.co2 + gas.h2o + fluid.h2o + solid.ch2o;
+            2 * gas.o2 + 2 * gas.co2 + gas.co + gas.h2o + fluid.h2o + solid.ch2o;
 
         carbon == 0 && hydrogen == 0 && oxygen == 0
     }
@@ -287,6 +287,7 @@ pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) 
         Gas {
             o2: -o2_per_tick,
             co2: o2_per_tick,
+            co: 0,
             h2o: o2_per_tick,
         },
         Fluid { h2o: 0 },
@@ -305,6 +306,7 @@ pub fn add_photosynthesis(
         Gas {
             o2: co2_per_tick,
             co2: -co2_per_tick,
+            co: 0,
             h2o: 0,
         },
         Fluid { h2o: -co2_per_tick },
