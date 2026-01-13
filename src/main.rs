@@ -21,11 +21,20 @@ struct TileMap {
     tiles: Vec<u8>,
 }
 
+fn thin_atmosphere(total_moles: i32) -> Gas {
+    // The reported composition is a volume (molar) ratio, so we treat it as mole fractions.
+    const CO2_PARTS_PER_10K: i32 = 9_532; // 95.32%
+    const O2_PARTS_PER_10K: i32 = 13; // 1.3 permille
+    let co2 = total_moles * CO2_PARTS_PER_10K / 10_000;
+    let o2 = total_moles * O2_PARTS_PER_10K / 10_000;
+    Gas::new(o2, co2)
+}
+
 #[macroquad::main("Dustfall")]
 async fn main() {
-    let mut engine = Engine::new(Volume::new(1000), Gas::new(210, 780));
+    let mut engine = Engine::new(Volume::new(1000), thin_atmosphere(10_000));
     let root = engine.root();
-    let _base = engine.add_container(root, Volume::new(100), Gas::new(350, 50));
+    let _base = engine.add_container(root, Volume::new(100), Gas::new(2000, 8000));
 
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
     let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
