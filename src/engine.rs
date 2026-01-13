@@ -294,7 +294,7 @@ pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) 
     );
 }
 
-pub fn add_moxie(
+pub fn add_photosynthesis(
     engine: &mut Engine,
     container: ContainerId,
     co2_per_tick: i32,

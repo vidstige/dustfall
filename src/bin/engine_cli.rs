@@ -1,4 +1,6 @@
-use dustfall::engine::{add_human, add_moxie, gas_from_parts, Engine, Fluid, Gas, Solid, Volume};
+use dustfall::engine::{
+    add_human, add_photosynthesis, gas_from_parts, Engine, Fluid, Gas, Solid, Volume,
+};
 
 fn thin_atmosphere(volume: Volume, pressure: i32) -> Gas {
     // The reported composition is a volume (molar) ratio, so we treat it as mole fractions.
@@ -35,7 +37,7 @@ fn main() {
         Solid { ch2o: 500 },
     );
     add_human(&mut engine, habitat, 3);
-    add_moxie(&mut engine, habitat, 2);
+    add_photosynthesis(&mut engine, habitat, 2);
 
     println!("tick 0: {:?}", engine.container(habitat));
     for tick in 1..=ticks {
