@@ -34,13 +34,13 @@ fn thin_atmosphere(total_moles: i32) -> Gas {
 async fn main() {
     let mut engine = Engine::new(Volume::new(1000), thin_atmosphere(10_000));
     let root = engine.root();
-    let base = engine.add_container(root, Volume::new(100), Gas {
+    let habitat = engine.add_container(root, Volume::new(100), Gas {
         o2: 2000,
         co2: 8000,
         co: 0,
     });
-    add_human(&mut engine, base, 3);
-    add_moxie(&mut engine, base, 2, 1, 2);
+    add_human(&mut engine, habitat, 3);
+    add_moxie(&mut engine, habitat, 2, 1, 2);
 
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
     let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
