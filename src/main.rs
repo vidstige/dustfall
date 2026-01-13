@@ -5,7 +5,7 @@ mod engine;
 mod isometric;
 mod texture_atlas;
 
-use engine::{add_human, add_moxie, Engine, Gas, Volume};
+use engine::{add_human, add_moxie, Engine, Fluid, Gas, Solid, Volume};
 use isometric::{build_camera, update_camera, IsoCamera, INITIAL_ZOOM};
 use texture_atlas::{load_tile_atlas, TileAtlas};
 
@@ -27,16 +27,31 @@ fn thin_atmosphere(total_moles: i32) -> Gas {
     const O2_PARTS_PER_10K: i32 = 13; // 1.3 permille
     let co2 = total_moles * CO2_PARTS_PER_10K / 10_000;
     let o2 = total_moles * O2_PARTS_PER_10K / 10_000;
-    Gas { o2, co2 }
+    Gas { o2, co2, h2o: 0 }
 }
 
 #[macroquad::main("Dustfall")]
 async fn main() {
-    let mut engine = Engine::new(Volume::new(1000), thin_atmosphere(10_000));
+    let mut engine = Engine::new(
+        Volume::new(1000),
+        thin_atmosphere(10_000),
+        Fluid { h2o: 0 },
+        Solid { ch2o: 0 },
+    );
     let root = engine.root();
-    let habitat = engine.add_container(root, Volume::new(100), Gas { o2: 2000, co2: 8000 });
+    let habitat = engine.add_container(
+        root,
+        Volume::new(100),
+        Gas {
+            o2: 2000,
+            co2: 8000,
+            h2o: 0,
+        },
+        Fluid { h2o: 2000 },
+        Solid { ch2o: 500 },
+    );
     add_human(&mut engine, habitat, 3);
-    add_moxie(&mut engine, habitat, 2, 2);
+    add_moxie(&mut engine, habitat, 2);
 
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
     let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;

@@ -26,6 +26,7 @@ pub struct Gas {
     // These amounts drive partial pressure when divided by volume.
     pub o2: i32,
     pub co2: i32,
+    pub h2o: i32,
 }
 
 impl Gas {
@@ -36,15 +37,47 @@ impl Gas {
     pub fn pressure(&self, volume: Volume) -> i32 {
         Self::partial_pressure(self.o2, volume)
             + Self::partial_pressure(self.co2, volume)
+            + Self::partial_pressure(self.h2o, volume)
     }
 
     pub fn can_apply_delta(&self, delta: Gas) -> bool {
-        self.o2 + delta.o2 >= 0 && self.co2 + delta.co2 >= 0
+        self.o2 + delta.o2 >= 0 && self.co2 + delta.co2 >= 0 && self.h2o + delta.h2o >= 0
     }
 
     pub fn apply_delta(&mut self, delta: Gas) {
         self.o2 += delta.o2;
         self.co2 += delta.co2;
+        self.h2o += delta.h2o;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Fluid {
+    pub h2o: i32,
+}
+
+impl Fluid {
+    pub fn can_apply_delta(&self, delta: Fluid) -> bool {
+        self.h2o + delta.h2o >= 0
+    }
+
+    pub fn apply_delta(&mut self, delta: Fluid) {
+        self.h2o += delta.h2o;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Solid {
+    pub ch2o: i32,
+}
+
+impl Solid {
+    pub fn can_apply_delta(&self, delta: Solid) -> bool {
+        self.ch2o + delta.ch2o >= 0
+    }
+
+    pub fn apply_delta(&mut self, delta: Solid) {
+        self.ch2o += delta.ch2o;
     }
 }
 
@@ -52,14 +85,18 @@ impl Gas {
 pub struct Container {
     volume: Volume,
     gas: Gas,
+    fluid: Fluid,
+    solid: Solid,
     children: Vec<ContainerId>,
 }
 
 impl Container {
-    fn new(volume: Volume, gas: Gas) -> Self {
+    fn new(volume: Volume, gas: Gas, fluid: Fluid, solid: Solid) -> Self {
         Self {
             volume,
             gas,
+            fluid,
+            solid,
             children: Vec::new(),
         }
     }
@@ -74,6 +111,22 @@ impl Container {
 
     pub fn gas_mut(&mut self) -> &mut Gas {
         &mut self.gas
+    }
+
+    pub fn fluid(&self) -> Fluid {
+        self.fluid
+    }
+
+    pub fn fluid_mut(&mut self) -> &mut Fluid {
+        &mut self.fluid
+    }
+
+    pub fn solid(&self) -> Solid {
+        self.solid
+    }
+
+    pub fn solid_mut(&mut self) -> &mut Solid {
+        &mut self.solid
     }
 
     pub fn pressure(&self) -> i32 {
@@ -100,19 +153,32 @@ impl Pipe {
 #[derive(Debug, Clone, Copy)]
 struct Reaction {
     container: ContainerId,
-    delta: Gas,
+    gas_delta: Gas,
+    fluid_delta: Fluid,
+    solid_delta: Solid,
 }
 
 impl Reaction {
-    fn new(container: ContainerId, delta: Gas) -> Self {
-        Self { container, delta }
+    fn new(container: ContainerId, gas_delta: Gas, fluid_delta: Fluid, solid_delta: Solid) -> Self {
+        Self {
+            container,
+            gas_delta,
+            fluid_delta,
+            solid_delta,
+        }
     }
 
     fn check(&self) -> bool {
-        let delta = self.delta;
-        // Carbon is treated as open-system for now, so only oxygen is conserved.
-        let oxygen = (delta.o2 + delta.co2) * 2;
-        oxygen == 0
+        let gas = self.gas_delta;
+        let fluid = self.fluid_delta;
+        let solid = self.solid_delta;
+
+        let carbon = gas.co2 + solid.ch2o;
+        let hydrogen = 2 * (gas.h2o + fluid.h2o + solid.ch2o);
+        let oxygen =
+            2 * gas.o2 + 2 * gas.co2 + gas.h2o + fluid.h2o + solid.ch2o;
+
+        carbon == 0 && hydrogen == 0 && oxygen == 0
     }
 }
 
@@ -125,14 +191,14 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(volume: Volume, gas: Gas) -> Self {
+    pub fn new(volume: Volume, gas: Gas, fluid: Fluid, solid: Solid) -> Self {
         let mut engine = Self {
             containers: Vec::new(),
             pipes: Vec::new(),
             reactions: Vec::new(),
             root: ContainerId(0),
         };
-        let id = engine.insert_container(volume, gas);
+        let id = engine.insert_container(volume, gas, fluid, solid);
         engine.root = id;
         engine
     }
@@ -146,8 +212,10 @@ impl Engine {
         parent: ContainerId,
         volume: Volume,
         gas: Gas,
+        fluid: Fluid,
+        solid: Solid,
     ) -> ContainerId {
-        let id = self.insert_container(volume, gas);
+        let id = self.insert_container(volume, gas, fluid, solid);
         self.containers[parent.index()].children.push(id);
         id
     }
@@ -171,27 +239,41 @@ impl Engine {
     pub fn add_reaction(
         &mut self,
         container: ContainerId,
-        delta: Gas,
+        gas_delta: Gas,
+        fluid_delta: Fluid,
+        solid_delta: Solid,
     ) {
-        // Use negative values to consume gases.
-        let reaction = Reaction::new(container, delta);
-        assert!(reaction.check(), "reaction is not oxygen-balanced");
+        // Use negative values to consume resources.
+        let reaction = Reaction::new(container, gas_delta, fluid_delta, solid_delta);
+        assert!(reaction.check(), "reaction is not atom-balanced");
         self.reactions.push(reaction);
     }
 
     pub fn tick(&mut self) {
         for reaction in self.reactions.iter().copied() {
             let container = &mut self.containers[reaction.container.index()];
-            if !container.gas.can_apply_delta(reaction.delta) {
+            if !container.gas.can_apply_delta(reaction.gas_delta)
+                || !container.fluid.can_apply_delta(reaction.fluid_delta)
+                || !container.solid.can_apply_delta(reaction.solid_delta)
+            {
                 continue;
             }
-            container.gas.apply_delta(reaction.delta);
+            container.gas.apply_delta(reaction.gas_delta);
+            container.fluid.apply_delta(reaction.fluid_delta);
+            container.solid.apply_delta(reaction.solid_delta);
         }
     }
 
-    fn insert_container(&mut self, volume: Volume, gas: Gas) -> ContainerId {
+    fn insert_container(
+        &mut self,
+        volume: Volume,
+        gas: Gas,
+        fluid: Fluid,
+        solid: Solid,
+    ) -> ContainerId {
         let id = ContainerId(self.containers.len());
-        self.containers.push(Container::new(volume, gas));
+        self.containers
+            .push(Container::new(volume, gas, fluid, solid));
         id
     }
 }
@@ -203,7 +285,10 @@ pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) 
         Gas {
             o2: -o2_per_tick,
             co2: o2_per_tick,
+            h2o: o2_per_tick,
         },
+        Fluid { h2o: 0 },
+        Solid { ch2o: -o2_per_tick },
     );
 }
 
@@ -211,15 +296,16 @@ pub fn add_moxie(
     engine: &mut Engine,
     container: ContainerId,
     co2_per_tick: i32,
-    o2_per_tick: i32,
 ) {
     assert!(co2_per_tick >= 0, "co2_per_tick must be non-negative");
-    assert!(o2_per_tick >= 0, "o2_per_tick must be non-negative");
     engine.add_reaction(
         container,
         Gas {
-            o2: o2_per_tick,
+            o2: co2_per_tick,
             co2: -co2_per_tick,
+            h2o: 0,
         },
+        Fluid { h2o: -co2_per_tick },
+        Solid { ch2o: co2_per_tick },
     );
 }
