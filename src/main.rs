@@ -1,11 +1,9 @@
 use macroquad::models::{draw_mesh, Mesh, Vertex};
 use macroquad::prelude::*;
 
-mod engine;
 mod isometric;
 mod texture_atlas;
 
-use engine::{add_human, add_moxie, gas_from_parts, Engine, Fluid, Gas, Solid, Volume};
 use isometric::{build_camera, update_camera, IsoCamera, INITIAL_ZOOM};
 use texture_atlas::{load_tile_atlas, TileAtlas};
 
@@ -21,39 +19,8 @@ struct TileMap {
     tiles: Vec<u8>,
 }
 
-fn thin_atmosphere(volume: Volume, pressure: i32) -> Gas {
-    // The reported composition is a volume (molar) ratio, so we treat it as mole fractions.
-    const DIVISOR: i32 = 10_000;
-    const CO2_PARTS: i32 = 9_532;
-    const O2_PARTS: i32 = 13;
-    gas_from_parts(volume, pressure, O2_PARTS, CO2_PARTS, 0, DIVISOR)
-}
-
 #[macroquad::main("Dustfall")]
 async fn main() {
-    let root_volume = Volume::new(1000);
-    let root_pressure = 10;
-    let mut engine = Engine::new(
-        root_volume,
-        thin_atmosphere(root_volume, root_pressure),
-        Fluid { h2o: 0 },
-        Solid { ch2o: 0 },
-    );
-    let root = engine.root();
-    let habitat = engine.add_container(
-        root,
-        Volume::new(100),
-        Gas {
-            o2: 2000,
-            co2: 8000,
-            h2o: 0,
-        },
-        Fluid { h2o: 2000 },
-        Solid { ch2o: 500 },
-    );
-    add_human(&mut engine, habitat, 3);
-    add_moxie(&mut engine, habitat, 2);
-
     let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
     let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
 
@@ -64,8 +31,6 @@ async fn main() {
     loop {
         // Clear in screen space first
         clear_background(Color::new(0.05, 0.05, 0.08, 1.0));
-
-        engine.tick();
 
         update_camera(&mut camera_state);
 
