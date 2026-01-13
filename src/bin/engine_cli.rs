@@ -31,7 +31,7 @@ fn main() {
             co2: 8000,
             h2o: 0,
         },
-        Fluid { h2o: 2000 },
+        Fluid { h2o: 0 },
         Solid { ch2o: 500 },
     );
     add_human(&mut engine, habitat, 3);
