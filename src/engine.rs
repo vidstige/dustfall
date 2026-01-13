@@ -40,20 +40,14 @@ impl Gas {
             + Self::partial_pressure(self.co, volume)
     }
 
-    pub fn can_consume(&self, other: Gas) -> bool {
-        self.o2 >= other.o2 && self.co2 >= other.co2 && self.co >= other.co
+    pub fn can_apply_delta(&self, delta: Gas) -> bool {
+        self.o2 + delta.o2 >= 0 && self.co2 + delta.co2 >= 0 && self.co + delta.co >= 0
     }
 
-    pub fn consume(&mut self, other: Gas) {
-        self.o2 -= other.o2;
-        self.co2 -= other.co2;
-        self.co -= other.co;
-    }
-
-    pub fn produce(&mut self, other: Gas) {
-        self.o2 += other.o2;
-        self.co2 += other.co2;
-        self.co += other.co;
+    pub fn apply_delta(&mut self, delta: Gas) {
+        self.o2 += delta.o2;
+        self.co2 += delta.co2;
+        self.co += delta.co;
     }
 }
 
@@ -109,23 +103,12 @@ impl Pipe {
 #[derive(Debug, Clone, Copy)]
 struct Reaction {
     container: ContainerId,
-    consumes: Gas,
-    produces: Gas,
+    delta: Gas,
 }
 
 impl Reaction {
-    fn new(container: ContainerId, consumes: Gas, produces: Gas) -> Self {
-        assert!(consumes.o2 >= 0, "consumes.o2 must be non-negative");
-        assert!(consumes.co2 >= 0, "consumes.co2 must be non-negative");
-        assert!(consumes.co >= 0, "consumes.co must be non-negative");
-        assert!(produces.o2 >= 0, "produces.o2 must be non-negative");
-        assert!(produces.co2 >= 0, "produces.co2 must be non-negative");
-        assert!(produces.co >= 0, "produces.co must be non-negative");
-        Self {
-            container,
-            consumes,
-            produces,
-        }
+    fn new(container: ContainerId, delta: Gas) -> Self {
+        Self { container, delta }
     }
 }
 
@@ -184,21 +167,19 @@ impl Engine {
     pub fn add_reaction(
         &mut self,
         container: ContainerId,
-        consumes: Gas,
-        produces: Gas,
+        delta: Gas,
     ) {
-        self.reactions
-            .push(Reaction::new(container, consumes, produces));
+        // Use negative values to consume gases.
+        self.reactions.push(Reaction::new(container, delta));
     }
 
     pub fn tick(&mut self) {
         for reaction in self.reactions.iter().copied() {
             let container = &mut self.containers[reaction.container.index()];
-            if !container.gas.can_consume(reaction.consumes) {
+            if !container.gas.can_apply_delta(reaction.delta) {
                 continue;
             }
-            container.gas.consume(reaction.consumes);
-            container.gas.produce(reaction.produces);
+            container.gas.apply_delta(reaction.delta);
         }
     }
 
@@ -210,15 +191,11 @@ impl Engine {
 }
 
 pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) {
+    assert!(o2_per_tick >= 0, "o2_per_tick must be non-negative");
     engine.add_reaction(
         container,
         Gas {
-            o2: o2_per_tick,
-            co2: 0,
-            co: 0,
-        },
-        Gas {
-            o2: 0,
+            o2: -o2_per_tick,
             co2: o2_per_tick,
             co: 0,
         },
@@ -232,16 +209,14 @@ pub fn add_moxie(
     o2_per_tick: i32,
     co_per_tick: i32,
 ) {
+    assert!(co2_per_tick >= 0, "co2_per_tick must be non-negative");
+    assert!(o2_per_tick >= 0, "o2_per_tick must be non-negative");
+    assert!(co_per_tick >= 0, "co_per_tick must be non-negative");
     engine.add_reaction(
         container,
         Gas {
-            o2: 0,
-            co2: co2_per_tick,
-            co: 0,
-        },
-        Gas {
             o2: o2_per_tick,
-            co2: 0,
+            co2: -co2_per_tick,
             co: co_per_tick,
         },
     );
