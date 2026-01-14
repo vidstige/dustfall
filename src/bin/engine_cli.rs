@@ -3,11 +3,11 @@ use dustfall::engine::{
 };
 use dustfall::units::PressureScale;
 
-fn thin_atmosphere(volume: Volume, pressure: i32) -> Gas {
+fn thin_atmosphere(volume: Volume, pressure: i64) -> Gas {
     // The reported composition is a volume (molar) ratio, so we treat it as mole fractions.
-    const DIVISOR: i32 = 10_000;
-    const CO2_PARTS: i32 = 9_532;
-    const O2_PARTS: i32 = 13;
+    const DIVISOR: i64 = 10_000;
+    const CO2_PARTS: i64 = 9_532;
+    const O2_PARTS: i64 = 13;
     gas_from_parts(volume, pressure, O2_PARTS, CO2_PARTS, 0, DIVISOR)
 }
 

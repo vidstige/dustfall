@@ -8,14 +8,14 @@ impl ContainerId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Volume(i32);
+pub struct Volume(i64);
 
 impl Volume {
-    pub fn new(value: i32) -> Self {
+    pub fn new(value: i64) -> Self {
         Self(value)
     }
 
-    pub fn value(self) -> i32 {
+    pub fn value(self) -> i64 {
         self.0
     }
 }
@@ -24,18 +24,18 @@ impl Volume {
 // Amounts are in integer "moles" (amount-of-substance units), not mass.
 pub struct Gas {
     // These amounts drive partial pressure when divided by volume.
-    pub o2: i32,
-    pub co2: i32,
-    pub co: i32,
-    pub h2o: i32,
+    pub o2: i64,
+    pub co2: i64,
+    pub co: i64,
+    pub h2o: i64,
 }
 
 impl Gas {
-    pub fn partial_pressure(amount: i32, volume: Volume) -> i32 {
+    pub fn partial_pressure(amount: i64, volume: Volume) -> i64 {
         amount / volume.value()
     }
 
-    pub fn pressure(&self, volume: Volume) -> i32 {
+    pub fn pressure(&self, volume: Volume) -> i64 {
         Self::partial_pressure(self.o2, volume)
             + Self::partial_pressure(self.co2, volume)
             + Self::partial_pressure(self.co, volume)
@@ -59,11 +59,11 @@ impl Gas {
 
 pub fn gas_from_parts(
     volume: Volume,
-    pressure: i32,
-    o2_parts: i32,
-    co2_parts: i32,
-    h2o_parts: i32,
-    divisor: i32,
+    pressure: i64,
+    o2_parts: i64,
+    co2_parts: i64,
+    h2o_parts: i64,
+    divisor: i64,
 ) -> Gas {
     assert!(volume.value() > 0, "volume must be positive");
     assert!(pressure >= 0, "pressure must be non-negative");
@@ -87,7 +87,7 @@ pub fn gas_from_parts(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fluid {
-    pub h2o: i32,
+    pub h2o: i64,
 }
 
 impl Fluid {
@@ -102,7 +102,7 @@ impl Fluid {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Solid {
-    pub ch2o: i32,
+    pub ch2o: i64,
 }
 
 impl Solid {
@@ -135,7 +135,7 @@ impl Container {
         }
     }
 
-    pub fn pressure(&self) -> i32 {
+    pub fn pressure(&self) -> i64 {
         self.gas.pressure(self.volume)
     }
 }
@@ -280,7 +280,7 @@ impl Engine {
     }
 }
 
-pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) {
+pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i64) {
     assert!(o2_per_tick >= 0, "o2_per_tick must be non-negative");
     engine.add_reaction(
         container,
@@ -298,7 +298,7 @@ pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i32) 
 pub fn add_photosynthesis(
     engine: &mut Engine,
     container: ContainerId,
-    co2_per_tick: i32,
+    co2_per_tick: i64,
 ) {
     assert!(co2_per_tick >= 0, "co2_per_tick must be non-negative");
     engine.add_reaction(
@@ -314,7 +314,7 @@ pub fn add_photosynthesis(
     );
 }
 
-pub fn add_moxie(engine: &mut Engine, container: ContainerId, co2_per_tick: i32) {
+pub fn add_moxie(engine: &mut Engine, container: ContainerId, co2_per_tick: i64) {
     assert!(co2_per_tick >= 0, "co2_per_tick must be non-negative");
     assert!(
         co2_per_tick % 2 == 0,
