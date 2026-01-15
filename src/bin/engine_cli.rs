@@ -18,9 +18,10 @@ fn main() {
         .unwrap_or(10);
 
     let scale = PressureScale::new(100.0);
+    let atmosphere_volume = Volume::new(93_000_000_000_000);
     let mut engine = Engine::new(
-        Volume::new(1000),
-        thin_atmosphere(Volume::new(1000), scale.pressure_for_parts(800.0)),
+        atmosphere_volume,
+        thin_atmosphere(atmosphere_volume, scale.pressure_for_parts(800.0)),
         Fluid { h2o: 0 },
         Solid { ch2o: 0 },
     );
