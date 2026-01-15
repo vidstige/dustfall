@@ -91,6 +91,10 @@ pub struct Fluid {
 }
 
 impl Fluid {
+    pub fn zero() -> Self {
+        Self { h2o: 0 }
+    }
+
     pub fn can_apply_delta(&self, delta: Fluid) -> bool {
         self.h2o + delta.h2o >= 0
     }
@@ -106,6 +110,10 @@ pub struct Solid {
 }
 
 impl Solid {
+    pub fn zero() -> Self {
+        Self { ch2o: 0 }
+    }
+
     pub fn can_apply_delta(&self, delta: Solid) -> bool {
         self.ch2o + delta.ch2o >= 0
     }
@@ -290,7 +298,7 @@ pub fn add_human(engine: &mut Engine, container: ContainerId, o2_per_tick: i64) 
             co: 0,
             h2o: o2_per_tick,
         },
-        Fluid { h2o: 0 },
+        Fluid::zero(),
         Solid { ch2o: -o2_per_tick },
     );
 }
@@ -329,7 +337,7 @@ pub fn add_moxie(engine: &mut Engine, container: ContainerId, co2_per_tick: i64)
             co: co2_per_tick,
             h2o: 0,
         },
-        Fluid { h2o: 0 },
-        Solid { ch2o: 0 },
+        Fluid::zero(),
+        Solid::zero(),
     );
 }

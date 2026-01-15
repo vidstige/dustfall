@@ -22,8 +22,8 @@ fn main() {
     let mut engine = Engine::new(
         atmosphere_volume,
         thin_atmosphere(atmosphere_volume, scale.pressure_for_parts(800.0)),
-        Fluid { h2o: 0 },
-        Solid { ch2o: 0 },
+        Fluid::zero(),
+        Solid::zero(),
     );
     let root = engine.root();
     let habitat = engine.add_container(
@@ -35,7 +35,7 @@ fn main() {
             co: 0,
             h2o: 0,
         },
-        Fluid { h2o: 0 },
+        Fluid::zero(),
         Solid { ch2o: 500 },
     );
     add_human(&mut engine, habitat, 3);
