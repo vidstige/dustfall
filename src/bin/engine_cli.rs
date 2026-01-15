@@ -44,10 +44,10 @@ fn main() {
 
     for tick in 0..ticks {
         println!(
-            "tick {}: atmosphere={} Pa, habitat={} Pa",
+            "tick {}: atmosphere={:.2} kPa, habitat={:.2} kPa",
             tick,
-            scale.to_pascal(engine.container(root).pressure()),
-            scale.to_pascal(engine.container(habitat).pressure())
+            scale.to_pascal(engine.container(root).pressure()) / 1000.0,
+            scale.to_pascal(engine.container(habitat).pressure()) / 1000.0
         );
         engine.tick();
     }
