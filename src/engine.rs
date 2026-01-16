@@ -31,6 +31,19 @@ pub struct Gas {
 }
 
 impl Gas {
+    pub fn zero() -> Self {
+        Self {
+            o2: 0,
+            co2: 0,
+            co: 0,
+            h2o: 0,
+        }
+    }
+
+    pub fn is_non_negative(&self) -> bool {
+        self.o2 >= 0 && self.co2 >= 0 && self.co >= 0 && self.h2o >= 0
+    }
+
     pub fn partial_pressure(amount: i64, volume: Volume) -> i64 {
         amount / volume.value()
     }
@@ -152,11 +165,14 @@ impl Container {
 pub struct Pipe {
     pub a: ContainerId,
     pub b: ContainerId,
+    // Flow rate per tick, expressed as moles of each gas.
+    pub flow_rate: Gas,
 }
 
 impl Pipe {
-    pub fn new(a: ContainerId, b: ContainerId) -> Self {
-        Self { a, b }
+    pub fn new(a: ContainerId, b: ContainerId, flow_rate: Gas) -> Self {
+        assert!(flow_rate.is_non_negative(), "flow rates must be non-negative");
+        Self { a, b, flow_rate }
     }
 }
 
@@ -242,8 +258,9 @@ impl Engine {
         &self.pipes
     }
 
-    pub fn add_pipe(&mut self, a: ContainerId, b: ContainerId) {
-        self.pipes.push(Pipe::new(a, b));
+    pub fn add_pipe(&mut self, a: ContainerId, b: ContainerId, flow_rate: Gas) {
+        assert!(a != b, "pipe endpoints must be different");
+        self.pipes.push(Pipe::new(a, b, flow_rate));
     }
 
     pub fn add_reaction(
@@ -272,6 +289,10 @@ impl Engine {
             container.fluid.apply_delta(reaction.fluid_delta);
             container.solid.apply_delta(reaction.solid_delta);
         }
+
+        for pipe in self.pipes.clone() {
+            self.apply_pipe_flow(pipe);
+        }
     }
 
     fn insert_container(
@@ -285,6 +306,97 @@ impl Engine {
         self.containers
             .push(Container::new(volume, gas, fluid, solid));
         id
+    }
+
+    fn apply_pipe_flow(&mut self, pipe: Pipe) {
+        let (a, b) = self.container_pair_mut(pipe.a, pipe.b);
+        let mut delta = Gas::zero();
+        let mut inverse = Gas::zero();
+
+        let o2_flow = Self::flow_amount(
+            a.gas.o2,
+            a.volume,
+            b.gas.o2,
+            b.volume,
+            pipe.flow_rate.o2,
+        );
+        let co2_flow = Self::flow_amount(
+            a.gas.co2,
+            a.volume,
+            b.gas.co2,
+            b.volume,
+            pipe.flow_rate.co2,
+        );
+        let co_flow = Self::flow_amount(
+            a.gas.co,
+            a.volume,
+            b.gas.co,
+            b.volume,
+            pipe.flow_rate.co,
+        );
+        let h2o_flow = Self::flow_amount(
+            a.gas.h2o,
+            a.volume,
+            b.gas.h2o,
+            b.volume,
+            pipe.flow_rate.h2o,
+        );
+
+        delta.o2 = -o2_flow;
+        delta.co2 = -co2_flow;
+        delta.co = -co_flow;
+        delta.h2o = -h2o_flow;
+
+        inverse.o2 = o2_flow;
+        inverse.co2 = co2_flow;
+        inverse.co = co_flow;
+        inverse.h2o = h2o_flow;
+
+        a.gas.apply_delta(delta);
+        b.gas.apply_delta(inverse);
+    }
+
+    fn container_pair_mut(
+        &mut self,
+        a: ContainerId,
+        b: ContainerId,
+    ) -> (&mut Container, &mut Container) {
+        let a_idx = a.index();
+        let b_idx = b.index();
+        assert!(a_idx != b_idx, "container pair must be different");
+        if a_idx < b_idx {
+            let (left, right) = self.containers.split_at_mut(b_idx);
+            (&mut left[a_idx], &mut right[0])
+        } else {
+            let (left, right) = self.containers.split_at_mut(a_idx);
+            (&mut right[0], &mut left[b_idx])
+        }
+    }
+
+    fn flow_amount(
+        amount_a: i64,
+        volume_a: Volume,
+        amount_b: i64,
+        volume_b: Volume,
+        max_flow: i64,
+    ) -> i64 {
+        let va = volume_a.value() as i128;
+        let vb = volume_b.value() as i128;
+        let numerator = (amount_a as i128) * vb - (amount_b as i128) * va;
+        let denom = va + vb;
+        if denom <= 0 {
+            return 0;
+        }
+        let mut equalize = numerator / denom;
+        let max_flow = max_flow as i128;
+        let hi = (amount_a as i128).min(max_flow);
+        let lo = -(amount_b as i128).min(max_flow);
+        if equalize > hi {
+            equalize = hi;
+        } else if equalize < lo {
+            equalize = lo;
+        }
+        equalize as i64
     }
 }
 
