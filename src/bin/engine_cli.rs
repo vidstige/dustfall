@@ -38,6 +38,17 @@ fn main() {
         Fluid::zero(),
         Solid { ch2o: 500 },
     );
+    // Vent CO from the habitat back into the atmosphere through a CO-only pipe.
+    engine.add_pipe(
+        habitat,
+        root,
+        Gas {
+            o2: 0,
+            co2: 0,
+            co: 2,
+            h2o: 0,
+        },
+    );
     add_human(&mut engine, habitat, 3);
     add_photosynthesis(&mut engine, habitat, 2);
     add_moxie(&mut engine, habitat, 2);
