@@ -3,7 +3,6 @@ use bevy::prelude::*;
 pub struct TileAtlas {
     columns: usize,
     rows: usize,
-    tile_count: usize,
 }
 
 impl TileAtlas {
@@ -24,17 +23,11 @@ impl TileAtlas {
         );
 
         let rows = height / tile_width;
-        let tile_count = columns * rows;
-
-        Self {
-            columns,
-            rows,
-            tile_count,
-        }
+        Self { columns, rows }
     }
 
     pub fn uv_bounds(&self, index: usize) -> (Vec2, Vec2) {
-        let tile_index = index % self.tile_count;
+        let tile_index = index % (self.columns * self.rows);
         let column = tile_index % self.columns;
         let row = tile_index / self.columns;
         let u0 = column as f32 / self.columns as f32;
