@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::texture::ImagePlugin;
+use bevy::animation::{AnimationClip, AnimationPlayer};
+use bevy::app::PostUpdate;
 
 mod isometric;
 mod texture_atlas;
@@ -24,6 +26,14 @@ struct TileMap {
 #[derive(Resource)]
 struct AtlasHandle(Handle<Image>);
 
+#[derive(Resource)]
+struct DuckAnimation {
+    animation: Handle<AnimationClip>,
+}
+
+#[derive(Component)]
+struct Duck;
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
@@ -31,9 +41,22 @@ fn main() {
         .insert_resource(checker_board(GRID_WIDTH, GRID_HEIGHT))
         .add_systems(
             Startup,
-            (isometric::spawn_iso_camera, setup_atlas, setup_lighting),
+            (
+                isometric::spawn_iso_camera,
+                setup_atlas,
+                setup_lighting,
+                setup_duck,
+            ),
         )
-        .add_systems(Update, (isometric::update_iso_camera, spawn_tiles_when_ready))
+        .add_systems(
+            Update,
+            (
+                isometric::update_iso_camera,
+                spawn_tiles_when_ready,
+                init_duck_animation,
+            ),
+        )
+        .add_systems(PostUpdate, remove_duck_cameras)
         .run();
 }
 
@@ -61,6 +84,20 @@ fn setup_lighting(mut commands: Commands) {
         )),
         ..default()
     });
+}
+
+fn setup_duck(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let scene = asset_server.load("models/Duck.glb#Scene0");
+    let animation = asset_server.load("models/Duck.glb#Animation0");
+    commands.insert_resource(DuckAnimation { animation });
+    commands.spawn((
+        SceneBundle {
+            scene,
+            transform: Transform::from_scale(Vec3::splat(0.5)),
+            ..default()
+        },
+        Duck,
+    ));
 }
 
 fn spawn_tiles_when_ready(
@@ -97,6 +134,52 @@ fn spawn_tiles_when_ready(
     }
 
     *spawned = true;
+}
+
+fn init_duck_animation(
+    duck_assets: Res<DuckAnimation>,
+    mut players: Query<&mut AnimationPlayer, Added<AnimationPlayer>>,
+) {
+    for mut player in &mut players {
+        player.play(duck_assets.animation.clone());
+        player.pause();
+        player.set_speed(0.0);
+    }
+}
+
+fn remove_duck_cameras(
+    duck_roots: Query<Entity, With<Duck>>,
+    parents: Query<&Parent>,
+    cameras: Query<Entity, Added<Camera>>,
+    mut commands: Commands,
+) {
+    let duck_entities: Vec<Entity> = duck_roots.iter().collect();
+    if duck_entities.is_empty() {
+        return;
+    }
+
+    for entity in &cameras {
+        if is_descendant_of(entity, &duck_entities, &parents) {
+            commands.entity(entity).remove::<Camera>();
+            commands.entity(entity).remove::<Camera3d>();
+        }
+    }
+}
+
+fn is_descendant_of(
+    mut entity: Entity,
+    roots: &[Entity],
+    parents: &Query<&Parent>,
+) -> bool {
+    loop {
+        if roots.contains(&entity) {
+            return true;
+        }
+        let Ok(parent) = parents.get(entity) else {
+            return false;
+        };
+        entity = parent.get();
+    }
 }
 
 fn build_grid_meshes(map: &TileMap, atlas: &TileAtlas) -> Vec<Mesh> {
