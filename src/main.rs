@@ -98,8 +98,8 @@ fn setup_lighting(mut commands: Commands) {
 }
 
 fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let gltf = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb");
-    let scene = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb#Scene0");
+    let gltf = asset_server.load("models/astronaut/astronaut-textured.glb");
+    let scene = asset_server.load("models/astronaut/astronaut-textured.glb#Scene0");
     commands.insert_resource(AstronautAssets { gltf });
     commands.spawn((
         SceneBundle {
