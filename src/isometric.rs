@@ -8,9 +8,9 @@ use bevy::window::PrimaryWindow;
 const CAMERA_EYE_OFFSET: (f32, f32, f32) = (-1.0, 0.816_496_6, 1.0);
 const CAMERA_DISTANCE_SCALE: f32 = 2.2;
 
-const DRAG_PAN_SCALE: f32 = 0.5;
-const TRACKPAD_PAN_SCALE: f32 = 0.012;
-const SCROLL_ZOOM_RATE: f32 = 0.1;
+const DRAG_PAN_SCALE: f32 = 0.005;
+const TRACKPAD_PAN_SCALE: f32 = 0.002;
+const SCROLL_ZOOM_RATE: f32 = 0.02;
 pub const INITIAL_ZOOM: f32 = 10.0;
 const MIN_ZOOM: f32 = 4.0;
 const MAX_ZOOM: f32 = 30.0;
