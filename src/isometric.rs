@@ -9,7 +9,7 @@ const CAMERA_EYE_OFFSET: (f32, f32, f32) = (-1.0, 0.816_496_6, 1.0);
 const CAMERA_DISTANCE_SCALE: f32 = 2.2;
 
 const DRAG_PAN_SCALE: f32 = 0.005;
-const TRACKPAD_PAN_SCALE: f32 = 0.002;
+const TRACKPAD_PAN_SCALE: f32 = 0.1;
 const SCROLL_ZOOM_RATE: f32 = 0.02;
 pub const INITIAL_ZOOM: f32 = 10.0;
 const MIN_ZOOM: f32 = 4.0;
@@ -19,11 +19,16 @@ const MAX_ZOOM: f32 = 30.0;
 pub struct IsoCamera {
     target: Vec2,
     zoom: f32,
+    last_cursor_pos: Option<Vec2>,
 }
 
 impl IsoCamera {
     pub fn new(target: Vec2, zoom: f32) -> Self {
-        Self { target, zoom }
+        Self {
+            target,
+            zoom,
+            last_cursor_pos: None,
+        }
     }
 }
 
@@ -61,7 +66,7 @@ pub fn update_iso_camera(
     mouse_buttons: Res<Input<MouseButton>>,
     keys: Res<Input<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut query: Query<(&mut Transform, &mut Projection), With<IsoCameraTag>>,
+    mut query: Query<(&Camera, &GlobalTransform, &mut Transform, &mut Projection), With<IsoCameraTag>>,
 ) {
     let mut pan_delta = Vec2::ZERO;
     for motion in motion_events.iter() {
@@ -82,6 +87,7 @@ pub fn update_iso_camera(
     }
 
     let window = windows.get_single().ok();
+    let cursor_pos = window.and_then(|window| window.cursor_position());
     let (safe_width, safe_height) = if let Some(window) = window {
         (window.width().max(1.0), window.height().max(1.0))
     } else {
@@ -92,27 +98,63 @@ pub fn update_iso_camera(
     let view_width = camera.zoom * aspect;
     let (pan_axis_x, pan_axis_y) = iso_pan_axes();
 
-    if pan_delta.length_squared() > 0.0 {
-        let world_delta = pan_axis_x * (pan_delta.x * view_width * 0.5 * DRAG_PAN_SCALE)
-            + pan_axis_y * (-pan_delta.y * view_height * 0.5 * DRAG_PAN_SCALE);
-        camera.target -= Vec2::new(world_delta.x, world_delta.z);
+    let dragging = mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Right);
+    if !dragging {
+        camera.last_cursor_pos = None;
     }
 
-    if scroll_delta.length_squared() > 0.0 {
-        if zoom_modifier_active(&keys) {
-            camera.zoom = (camera.zoom * (1.0 - scroll_delta.y * SCROLL_ZOOM_RATE))
-                .clamp(MIN_ZOOM, MAX_ZOOM);
-        } else {
-            let world_delta = pan_axis_x * (scroll_delta.x * view_width * TRACKPAD_PAN_SCALE)
-                + pan_axis_y * (-scroll_delta.y * view_height * TRACKPAD_PAN_SCALE);
+    for (camera_component, camera_transform, mut transform, mut projection) in &mut query {
+        let mut used_drag = false;
+        if dragging {
+            if let (Some(current_pos), Some(last_pos)) = (cursor_pos, camera.last_cursor_pos) {
+                if let Some(world_delta) =
+                    cursor_pan_delta(camera_component, camera_transform, last_pos, current_pos)
+                {
+                    camera.target += world_delta;
+                    used_drag = true;
+                }
+            }
+            camera.last_cursor_pos = cursor_pos;
+        }
+
+        if !used_drag && pan_delta.length_squared() > 0.0 {
+            let world_delta = pan_axis_x * (pan_delta.x * view_width * 0.5 * DRAG_PAN_SCALE)
+                + pan_axis_y * (-pan_delta.y * view_height * 0.5 * DRAG_PAN_SCALE);
             camera.target -= Vec2::new(world_delta.x, world_delta.z);
         }
-    }
 
-    let target = Vec3::new(camera.target.x, 0.0, camera.target.y);
-    let position = target + iso_eye_direction() * (camera.zoom * CAMERA_DISTANCE_SCALE);
+        if scroll_delta.length_squared() > 0.0 {
+            if zoom_modifier_active(&keys) {
+                camera.zoom = (camera.zoom * (1.0 - scroll_delta.y * SCROLL_ZOOM_RATE))
+                    .clamp(MIN_ZOOM, MAX_ZOOM);
+            } else {
+                let mut used_scroll = false;
+                if let Some(current_pos) = cursor_pos {
+                    let scroll_pan =
+                        Vec2::new(scroll_delta.x, -scroll_delta.y) * TRACKPAD_PAN_SCALE;
+                    let scaled_pos = current_pos + scroll_pan;
+                    if let Some(world_delta) = cursor_pan_delta(
+                        camera_component,
+                        camera_transform,
+                        current_pos,
+                        scaled_pos,
+                    ) {
+                        camera.target += world_delta;
+                        used_scroll = true;
+                    }
+                }
 
-    for (mut transform, mut projection) in &mut query {
+                if !used_scroll {
+                    let world_delta = pan_axis_x
+                        * (scroll_delta.x * view_width * TRACKPAD_PAN_SCALE)
+                        + pan_axis_y * (-scroll_delta.y * view_height * TRACKPAD_PAN_SCALE);
+                    camera.target -= Vec2::new(world_delta.x, world_delta.z);
+                }
+            }
+        }
+
+        let target = Vec3::new(camera.target.x, 0.0, camera.target.y);
+        let position = target + iso_eye_direction() * (camera.zoom * CAMERA_DISTANCE_SCALE);
         transform.translation = position;
         transform.look_at(target, Vec3::Y);
         if let Projection::Orthographic(ref mut ortho) = *projection {
@@ -164,4 +206,31 @@ fn zoom_modifier_active(keys: &Input<KeyCode>) -> bool {
         || keys.pressed(KeyCode::AltRight)
         || keys.pressed(KeyCode::ControlLeft)
         || keys.pressed(KeyCode::ControlRight)
+}
+
+fn cursor_pan_delta(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    from: Vec2,
+    to: Vec2,
+) -> Option<Vec2> {
+    let world_from = cursor_world_on_plane(camera, camera_transform, from)?;
+    let world_to = cursor_world_on_plane(camera, camera_transform, to)?;
+    Some(Vec2::new(world_from.x - world_to.x, world_from.z - world_to.z))
+}
+
+fn cursor_world_on_plane(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    cursor_pos: Vec2,
+) -> Option<Vec3> {
+    let ray = camera.viewport_to_world(camera_transform, cursor_pos)?;
+    if ray.direction.y.abs() < 1e-6 {
+        return None;
+    }
+    let t = -ray.origin.y / ray.direction.y;
+    if t < 0.0 {
+        return None;
+    }
+    Some(ray.origin + ray.direction * t)
 }
