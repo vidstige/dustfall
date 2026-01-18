@@ -1,5 +1,5 @@
 use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::render::camera::{OrthographicProjection, Projection, ScalingMode};
 use bevy::window::PrimaryWindow;
@@ -8,7 +8,6 @@ use bevy::window::PrimaryWindow;
 const CAMERA_EYE_OFFSET: (f32, f32, f32) = (-1.0, 0.816_496_6, 1.0);
 const CAMERA_DISTANCE_SCALE: f32 = 2.2;
 
-const DRAG_PAN_SCALE: f32 = 0.005;
 const TRACKPAD_PAN_SCALE: f32 = 0.1;
 const SCROLL_ZOOM_RATE: f32 = 0.02;
 pub const INITIAL_ZOOM: f32 = 10.0;
@@ -61,18 +60,12 @@ pub fn spawn_iso_camera(mut commands: Commands) {
 
 pub fn update_iso_camera(
     mut camera: ResMut<IsoCamera>,
-    mut motion_events: EventReader<MouseMotion>,
     mut scroll_events: EventReader<MouseWheel>,
     mouse_buttons: Res<Input<MouseButton>>,
     keys: Res<Input<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut query: Query<(&Camera, &GlobalTransform, &mut Transform, &mut Projection), With<IsoCameraTag>>,
 ) {
-    let mut pan_delta = Vec2::ZERO;
-    for motion in motion_events.iter() {
-        pan_delta += motion.delta;
-    }
-
     let mut scroll_delta = Vec2::ZERO;
     for event in scroll_events.iter() {
         let mut delta = Vec2::new(event.x, event.y);
@@ -80,10 +73,6 @@ pub fn update_iso_camera(
             delta *= 16.0;
         }
         scroll_delta += delta;
-    }
-
-    if !(mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Right)) {
-        pan_delta = Vec2::ZERO;
     }
 
     let window = windows.get_single().ok();
@@ -104,23 +93,15 @@ pub fn update_iso_camera(
     }
 
     for (camera_component, camera_transform, mut transform, mut projection) in &mut query {
-        let mut used_drag = false;
         if dragging {
             if let (Some(current_pos), Some(last_pos)) = (cursor_pos, camera.last_cursor_pos) {
                 if let Some(world_delta) =
                     cursor_pan_delta(camera_component, camera_transform, last_pos, current_pos)
                 {
                     camera.target += world_delta;
-                    used_drag = true;
                 }
             }
             camera.last_cursor_pos = cursor_pos;
-        }
-
-        if !used_drag && pan_delta.length_squared() > 0.0 {
-            let world_delta = pan_axis_x * (pan_delta.x * view_width * 0.5 * DRAG_PAN_SCALE)
-                + pan_axis_y * (-pan_delta.y * view_height * 0.5 * DRAG_PAN_SCALE);
-            camera.target -= Vec2::new(world_delta.x, world_delta.z);
         }
 
         if scroll_delta.length_squared() > 0.0 {
