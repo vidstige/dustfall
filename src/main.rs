@@ -29,7 +29,10 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .insert_resource(checker_board(GRID_WIDTH, GRID_HEIGHT))
-        .add_systems(Startup, (isometric::spawn_iso_camera, setup_atlas))
+        .add_systems(
+            Startup,
+            (isometric::spawn_iso_camera, setup_atlas, setup_lighting),
+        )
         .add_systems(Update, (isometric::update_iso_camera, spawn_tiles_when_ready))
         .run();
 }
@@ -37,6 +40,27 @@ fn main() {
 fn setup_atlas(mut commands: Commands, asset_server: Res<AssetServer>) {
     let handle = asset_server.load("images/topdown.png");
     commands.insert_resource(AtlasHandle(handle));
+}
+
+fn setup_lighting(mut commands: Commands) {
+    commands.insert_resource(AmbientLight {
+        color: Color::rgb(0.9, 0.9, 1.0),
+        brightness: 0.35,
+    });
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            illuminance: 12000.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        transform: Transform::from_rotation(Quat::from_euler(
+            EulerRot::XYZ,
+            -0.9,
+            -0.6,
+            0.0,
+        )),
+        ..default()
+    });
 }
 
 fn spawn_tiles_when_ready(
@@ -60,7 +84,6 @@ fn spawn_tiles_when_ready(
     let atlas = TileAtlas::from_image(image, TILE_ATLAS_COLUMNS);
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(atlas_handle.0.clone()),
-        unlit: true,
         cull_mode: None,
         ..default()
     });
