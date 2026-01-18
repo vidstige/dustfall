@@ -1,9 +1,11 @@
 use bevy::prelude::*;
+use bevy::log::{Level, LogPlugin};
 use bevy::render::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::texture::ImagePlugin;
-use bevy::animation::{AnimationClip, AnimationPlayer};
+use bevy::animation::AnimationPlayer;
 use bevy::app::PostUpdate;
+use bevy::gltf::Gltf;
 
 mod isometric;
 mod texture_atlas;
@@ -27,8 +29,8 @@ struct TileMap {
 struct AtlasHandle(Handle<Image>);
 
 #[derive(Resource)]
-struct AstronautAnimation {
-    animation: Handle<AnimationClip>,
+struct AstronautAssets {
+    gltf: Handle<Gltf>,
 }
 
 #[derive(Component)]
@@ -37,7 +39,16 @@ struct Astronaut;
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
-        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                // Bevy doesn't support Step interpolation for glTF animations.
+                // Re-export the GLB with Linear interpolation to remove this filter.
+                .set(LogPlugin {
+                    level: Level::INFO,
+                    filter: "wgpu=error,naga=warn,bevy_gltf::loader=error".to_string(),
+                }),
+        )
         .insert_resource(checker_board(GRID_WIDTH, GRID_HEIGHT))
         .add_systems(
             Startup,
@@ -87,9 +98,9 @@ fn setup_lighting(mut commands: Commands) {
 }
 
 fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let gltf = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb");
     let scene = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb#Scene0");
-    let animation = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb#Animation0");
-    commands.insert_resource(AstronautAnimation { animation });
+    commands.insert_resource(AstronautAssets { gltf });
     commands.spawn((
         SceneBundle {
             scene,
@@ -141,7 +152,8 @@ fn spawn_tiles_when_ready(
 }
 
 fn init_scene_animations(
-    astronaut_assets: Res<AstronautAnimation>,
+    astronaut_assets: Res<AstronautAssets>,
+    gltfs: Res<Assets<Gltf>>,
     astronaut_roots: Query<Entity, With<Astronaut>>,
     parents: Query<&Parent>,
     mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
@@ -151,11 +163,24 @@ fn init_scene_animations(
         return;
     }
 
+    let Some(gltf) = gltfs.get(&astronaut_assets.gltf) else {
+        return;
+    };
+    let animation = gltf
+        .named_animations
+        .get("Idle_Breath")
+        .cloned()
+        .or_else(|| gltf.animations.first().cloned());
+    let Some(animation) = animation else {
+        return;
+    };
+
     for (entity, mut player) in &mut players {
         if is_descendant_of(entity, &astronaut_entities, &parents) {
-            player.play(astronaut_assets.animation.clone());
-            player.pause();
-            player.set_speed(0.0);
+            player.play(animation.clone());
+            player.repeat();
+            player.set_speed(1.0);
+            player.resume();
         }
     }
 }

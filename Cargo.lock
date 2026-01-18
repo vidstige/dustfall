@@ -447,6 +447,7 @@ checksum = "f07494a733dca032e71a20f4b1f423de765da49cbff34406ae6cd813f9b50c41"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
+ "bevy_animation",
  "bevy_app",
  "bevy_asset",
  "bevy_core",
@@ -1108,6 +1109,7 @@ name = "dustfall"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy_gltf",
 ]
 
 [[package]]
