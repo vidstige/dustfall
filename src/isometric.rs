@@ -1,6 +1,8 @@
-use macroquad::prelude::*;
-
-use crate::{TileMap, TILE_WORLD_SIZE};
+use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
+use bevy::prelude::*;
+use bevy::render::camera::{OrthographicProjection, Projection, ScalingMode};
+use bevy::window::PrimaryWindow;
 
 // Camera pitch tuned so projected tiles appear with a classic 2:1 isometric ratio.
 const CAMERA_EYE_OFFSET: (f32, f32, f32) = (-1.0, 0.816_496_6, 1.0);
@@ -13,59 +15,78 @@ pub const INITIAL_ZOOM: f32 = 10.0;
 const MIN_ZOOM: f32 = 4.0;
 const MAX_ZOOM: f32 = 30.0;
 
+#[derive(Resource)]
 pub struct IsoCamera {
     target: Vec2,
     zoom: f32,
-    active_touch_id: Option<u64>,
-    last_touch_pos: Option<Vec2>,
 }
 
 impl IsoCamera {
     pub fn new(target: Vec2, zoom: f32) -> Self {
-        Self {
-            target,
-            zoom,
-            active_touch_id: None,
-            last_touch_pos: None,
-        }
+        Self { target, zoom }
     }
 }
 
-pub fn build_camera(map: &TileMap, camera: &IsoCamera) -> Camera3D {
-    let longest_side = (map.width.max(map.height) as f32 * TILE_WORLD_SIZE).max(1.0);
-    let target = vec3(camera.target.x, 0.0, camera.target.y);
-    let view_dir = iso_eye_direction();
-    let distance = camera.zoom * CAMERA_DISTANCE_SCALE;
-    let position = target + view_dir * distance;
+#[derive(Component)]
+pub struct IsoCameraTag;
 
-    Camera3D {
-        position,
-        target,
-        up: vec3(0.0, 1.0, 0.0),
-        projection: Projection::Orthographics,
-        fovy: camera.zoom,
-        z_near: 0.05,
-        z_far: longest_side * 10.0,
-        ..Default::default()
-    }
+pub fn spawn_iso_camera(mut commands: Commands) {
+    let camera = IsoCamera::new(Vec2::ZERO, INITIAL_ZOOM);
+    let target = Vec3::new(camera.target.x, 0.0, camera.target.y);
+    let position = target + iso_eye_direction() * (camera.zoom * CAMERA_DISTANCE_SCALE);
+
+    commands.insert_resource(camera);
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_translation(position).looking_at(target, Vec3::Y),
+            projection: OrthographicProjection {
+                scale: 1.0,
+                scaling_mode: ScalingMode::FixedVertical(INITIAL_ZOOM),
+                near: -1000.0,
+                far: 1000.0,
+                ..default()
+            }
+            .into(),
+            tonemapping: Tonemapping::None,
+            ..default()
+        },
+        IsoCameraTag,
+    ));
 }
 
-pub fn update_camera(camera: &mut IsoCamera) {
+pub fn update_iso_camera(
+    mut camera: ResMut<IsoCamera>,
+    mut motion_events: EventReader<MouseMotion>,
+    mut scroll_events: EventReader<MouseWheel>,
+    mouse_buttons: Res<Input<MouseButton>>,
+    keys: Res<Input<KeyCode>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut query: Query<(&mut Transform, &mut Projection), With<IsoCameraTag>>,
+) {
     let mut pan_delta = Vec2::ZERO;
-
-    if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
-        pan_delta += mouse_delta_position();
-        camera.active_touch_id = None;
-        camera.last_touch_pos = None;
-    } else if let Some(touch_delta) = touch_pan_delta(camera) {
-        pan_delta += touch_delta;
-    } else {
-        camera.active_touch_id = None;
-        camera.last_touch_pos = None;
+    for motion in motion_events.iter() {
+        pan_delta += motion.delta;
     }
 
-    let safe_width = screen_width().max(1.0);
-    let safe_height = screen_height().max(1.0);
+    let mut scroll_delta = Vec2::ZERO;
+    for event in scroll_events.iter() {
+        let mut delta = Vec2::new(event.x, event.y);
+        if matches!(event.unit, MouseScrollUnit::Line) {
+            delta *= 16.0;
+        }
+        scroll_delta += delta;
+    }
+
+    if !(mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Right)) {
+        pan_delta = Vec2::ZERO;
+    }
+
+    let window = windows.get_single().ok();
+    let (safe_width, safe_height) = if let Some(window) = window {
+        (window.width().max(1.0), window.height().max(1.0))
+    } else {
+        (1.0, 1.0)
+    };
     let aspect = safe_width / safe_height;
     let view_height = camera.zoom;
     let view_width = camera.zoom * aspect;
@@ -74,24 +95,35 @@ pub fn update_camera(camera: &mut IsoCamera) {
     if pan_delta.length_squared() > 0.0 {
         let world_delta = pan_axis_x * (pan_delta.x * view_width * 0.5 * DRAG_PAN_SCALE)
             + pan_axis_y * (-pan_delta.y * view_height * 0.5 * DRAG_PAN_SCALE);
-        camera.target -= vec2(world_delta.x, world_delta.z);
+        camera.target -= Vec2::new(world_delta.x, world_delta.z);
     }
 
-    let (scroll_x, scroll_y) = mouse_wheel();
-    if scroll_x.abs() > f32::EPSILON || scroll_y.abs() > f32::EPSILON {
-        if zoom_modifier_active() {
-            camera.zoom =
-                (camera.zoom * (1.0 - scroll_y * SCROLL_ZOOM_RATE)).clamp(MIN_ZOOM, MAX_ZOOM);
+    if scroll_delta.length_squared() > 0.0 {
+        if zoom_modifier_active(&keys) {
+            camera.zoom = (camera.zoom * (1.0 - scroll_delta.y * SCROLL_ZOOM_RATE))
+                .clamp(MIN_ZOOM, MAX_ZOOM);
         } else {
-            let world_delta = pan_axis_x * (scroll_x * view_width * TRACKPAD_PAN_SCALE)
-                + pan_axis_y * (-scroll_y * view_height * TRACKPAD_PAN_SCALE);
-            camera.target -= vec2(world_delta.x, world_delta.z);
+            let world_delta = pan_axis_x * (scroll_delta.x * view_width * TRACKPAD_PAN_SCALE)
+                + pan_axis_y * (-scroll_delta.y * view_height * TRACKPAD_PAN_SCALE);
+            camera.target -= Vec2::new(world_delta.x, world_delta.z);
+        }
+    }
+
+    let target = Vec3::new(camera.target.x, 0.0, camera.target.y);
+    let position = target + iso_eye_direction() * (camera.zoom * CAMERA_DISTANCE_SCALE);
+
+    for (mut transform, mut projection) in &mut query {
+        transform.translation = position;
+        transform.look_at(target, Vec3::Y);
+        if let Projection::Orthographic(ref mut ortho) = *projection {
+            ortho.scale = 1.0;
+            ortho.scaling_mode = ScalingMode::FixedVertical(camera.zoom);
         }
     }
 }
 
 fn iso_eye_direction() -> Vec3 {
-    vec3(
+    Vec3::new(
         CAMERA_EYE_OFFSET.0,
         CAMERA_EYE_OFFSET.1,
         CAMERA_EYE_OFFSET.2,
@@ -127,49 +159,9 @@ fn plane_axes_from_forward(forward: Vec3) -> (Vec3, Vec3) {
     (planar_right, planar_forward)
 }
 
-fn zoom_modifier_active() -> bool {
-    is_key_down(KeyCode::LeftAlt)
-        || is_key_down(KeyCode::RightAlt)
-        || is_key_down(KeyCode::LeftControl)
-        || is_key_down(KeyCode::RightControl)
-}
-
-fn touch_pan_delta(camera: &mut IsoCamera) -> Option<Vec2> {
-    let mut touches = touches_local();
-    if touches.is_empty() {
-        return None;
-    }
-
-    touches.sort_by_key(|t| t.id);
-
-    let current = if let Some(id) = camera.active_touch_id {
-        touches.into_iter().find(|t| t.id == id)
-    } else {
-        touches
-            .into_iter()
-            .find(|t| matches!(t.phase, TouchPhase::Started | TouchPhase::Moved))
-    };
-
-    let touch = current?;
-
-    match touch.phase {
-        TouchPhase::Started => {
-            camera.active_touch_id = Some(touch.id);
-            camera.last_touch_pos = Some(touch.position);
-            None
-        }
-        TouchPhase::Moved => {
-            camera.active_touch_id = Some(touch.id);
-            let delta = camera.last_touch_pos.map(|last| last - touch.position);
-            camera.last_touch_pos = Some(touch.position);
-            delta
-        }
-        TouchPhase::Ended | TouchPhase::Cancelled | TouchPhase::Stationary => {
-            if camera.active_touch_id == Some(touch.id) {
-                camera.active_touch_id = None;
-                camera.last_touch_pos = None;
-            }
-            None
-        }
-    }
+fn zoom_modifier_active(keys: &Input<KeyCode>) -> bool {
+    keys.pressed(KeyCode::AltLeft)
+        || keys.pressed(KeyCode::AltRight)
+        || keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight)
 }

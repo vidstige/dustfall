@@ -1,11 +1,14 @@
-use macroquad::models::{draw_mesh, Mesh, Vertex};
-use macroquad::prelude::*;
+use bevy::asset::LoadState;
+use bevy::log::{info, warn};
+use bevy::prelude::*;
+use bevy::render::mesh::{Indices, Mesh};
+use bevy::render::render_resource::PrimitiveTopology;
+use bevy::render::texture::ImagePlugin;
 
 mod isometric;
 mod texture_atlas;
 
-use isometric::{build_camera, update_camera, IsoCamera, INITIAL_ZOOM};
-use texture_atlas::{load_tile_atlas, TileAtlas};
+use texture_atlas::TileAtlas;
 
 const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
@@ -13,45 +16,96 @@ const TILE_WORLD_SIZE: f32 = 1.0;
 const CHUNK_SIZE: usize = 16;
 const TILE_ATLAS_COLUMNS: usize = 8;
 
+#[derive(Resource)]
 struct TileMap {
     width: usize,
     height: usize,
     tiles: Vec<u8>,
 }
 
-#[macroquad::main("Dustfall")]
-async fn main() {
-    let map = checker_board(GRID_WIDTH, GRID_HEIGHT);
-    let tile_atlas = load_tile_atlas("images/topdown.png", TILE_ATLAS_COLUMNS).await;
+#[derive(Resource)]
+struct AtlasState {
+    handle: Handle<Image>,
+    columns: usize,
+    spawned: bool,
+}
 
-    let mut camera_state = IsoCamera::new(Vec2::ZERO, INITIAL_ZOOM);
+fn main() {
+    App::new()
+        .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
+        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .insert_resource(checker_board(GRID_WIDTH, GRID_HEIGHT))
+        .add_systems(Startup, (setup_camera, setup_atlas))
+        .add_systems(Update, (isometric::update_iso_camera, spawn_tiles_when_ready))
+        .run();
+}
 
-    let grid_meshes = build_grid_meshes(&map, &tile_atlas);
+fn setup_camera(commands: Commands) {
+    isometric::spawn_iso_camera(commands);
+}
 
-    loop {
-        // Clear in screen space first
-        clear_background(Color::new(0.05, 0.05, 0.08, 1.0));
+fn setup_atlas(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handle = asset_server.load("images/topdown.png");
+    commands.insert_resource(AtlasState {
+        handle,
+        columns: TILE_ATLAS_COLUMNS,
+        spawned: false,
+    });
+}
 
-        update_camera(&mut camera_state);
-
-        let iso_camera = build_camera(&map, &camera_state);
-        set_camera(&iso_camera);
-
-        for mesh in &grid_meshes {
-            draw_mesh(mesh);
-        }
-
-        set_default_camera();
-        draw_text(
-            "Drag or scroll to pan (hold Alt for zoom)",
-            10.0,
-            28.0,
-            24.0,
-            WHITE,
-        );
-
-        next_frame().await;
+fn spawn_tiles_when_ready(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    images: Res<Assets<Image>>,
+    asset_server: Res<AssetServer>,
+    map: Res<TileMap>,
+    mut atlas_state: ResMut<AtlasState>,
+) {
+    if atlas_state.spawned {
+        return;
     }
+
+    let load_state = asset_server.get_load_state(atlas_state.handle.clone());
+    if !matches!(load_state, LoadState::Loaded) {
+        if matches!(load_state, LoadState::Failed) {
+            warn!("Failed to load tile atlas image (assets/images/topdown.png).");
+            atlas_state.spawned = true;
+        }
+        return;
+    }
+
+    let image = match images.get(&atlas_state.handle) {
+        Some(image) => image,
+        None => {
+            warn!("Tile atlas image loaded but not present in Assets<Image> yet.");
+            return;
+        }
+    };
+
+    info!(
+        "Loaded tile atlas image: {}x{}",
+        image.texture_descriptor.size.width,
+        image.texture_descriptor.size.height
+    );
+
+    let atlas = TileAtlas::from_image(image, atlas_state.columns);
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(atlas_state.handle.clone()),
+        unlit: true,
+        cull_mode: None,
+        ..default()
+    });
+
+    for mesh in build_grid_meshes(&map, &atlas) {
+        commands.spawn(PbrBundle {
+            mesh: meshes.add(mesh),
+            material: material.clone(),
+            ..default()
+        });
+    }
+
+    atlas_state.spawned = true;
 }
 
 fn build_grid_meshes(map: &TileMap, atlas: &TileAtlas) -> Vec<Mesh> {
@@ -85,7 +139,9 @@ fn build_chunk_mesh(
     half_w: f32,
     half_h: f32,
 ) -> Mesh {
-    let mut vertices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
+    let mut positions = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
+    let mut normals = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
+    let mut uvs = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
     let mut indices = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 6);
 
     let tile_x_start = chunk_x * CHUNK_SIZE;
@@ -101,7 +157,9 @@ fn build_chunk_mesh(
             let (uv_min, uv_max) = atlas.uv_bounds(tile_index);
 
             push_tile(
-                &mut vertices,
+                &mut positions,
+                &mut normals,
+                &mut uvs,
                 &mut indices,
                 world_x,
                 world_z,
@@ -112,11 +170,12 @@ fn build_chunk_mesh(
         }
     }
 
-    Mesh {
-        vertices,
-        indices,
-        texture: Some(atlas.texture.clone()),
-    }
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.set_indices(Some(Indices::U32(indices)));
+    mesh
 }
 
 impl TileMap {
@@ -142,8 +201,10 @@ fn checker_board(width: usize, height: usize) -> TileMap {
 }
 
 fn push_tile(
-    vertices: &mut Vec<Vertex>,
-    indices: &mut Vec<u16>,
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
     world_x: f32,
     world_z: f32,
     size: f32,
@@ -155,13 +216,22 @@ fn push_tile(
     let x1 = world_x + size;
     let z1 = world_z + size;
     let y = 0.0;
+    let normal = [0.0, 1.0, 0.0];
 
-    let base = vertices.len() as u16;
-    vertices.extend_from_slice(&[
-        Vertex::new(x0, y, z0, uv_min.x, uv_min.y, WHITE),
-        Vertex::new(x1, y, z0, uv_max.x, uv_min.y, WHITE),
-        Vertex::new(x1, y, z1, uv_max.x, uv_max.y, WHITE),
-        Vertex::new(x0, y, z1, uv_min.x, uv_max.y, WHITE),
+    let base = positions.len() as u32;
+    positions.extend_from_slice(&[
+        [x0, y, z0],
+        [x1, y, z0],
+        [x1, y, z1],
+        [x0, y, z1],
     ]);
+    normals.extend_from_slice(&[normal; 4]);
+    uvs.extend_from_slice(&[
+        [uv_min.x, uv_min.y],
+        [uv_max.x, uv_min.y],
+        [uv_max.x, uv_max.y],
+        [uv_min.x, uv_max.y],
+    ]);
+
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
