@@ -34,6 +34,14 @@ struct DuckAnimation {
 #[derive(Component)]
 struct Duck;
 
+#[derive(Resource)]
+struct AstronautAnimation {
+    animation: Handle<AnimationClip>,
+}
+
+#[derive(Component)]
+struct Astronaut;
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
@@ -46,6 +54,7 @@ fn main() {
                 setup_atlas,
                 setup_lighting,
                 setup_duck,
+                setup_astronaut,
             ),
         )
         .add_systems(
@@ -53,10 +62,10 @@ fn main() {
             (
                 isometric::update_iso_camera,
                 spawn_tiles_when_ready,
-                init_duck_animation,
+                init_scene_animations,
             ),
         )
-        .add_systems(PostUpdate, remove_duck_cameras)
+        .add_systems(PostUpdate, remove_scene_cameras)
         .run();
 }
 
@@ -100,6 +109,24 @@ fn setup_duck(mut commands: Commands, asset_server: Res<AssetServer>) {
     ));
 }
 
+fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let scene = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb#Scene0");
+    let animation = asset_server.load("models/astronaut/RIGGED_ASTRONAUT.v1.1.glb#Animation0");
+    commands.insert_resource(AstronautAnimation { animation });
+    commands.spawn((
+        SceneBundle {
+            scene,
+            transform: Transform {
+                translation: Vec3::new(2.0, 0.0, 0.5),
+                scale: Vec3::splat(0.5),
+                ..default()
+            },
+            ..default()
+        },
+        Astronaut,
+    ));
+}
+
 fn spawn_tiles_when_ready(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -136,30 +163,48 @@ fn spawn_tiles_when_ready(
     *spawned = true;
 }
 
-fn init_duck_animation(
+fn init_scene_animations(
     duck_assets: Res<DuckAnimation>,
-    mut players: Query<&mut AnimationPlayer, Added<AnimationPlayer>>,
+    astronaut_assets: Res<AstronautAnimation>,
+    duck_roots: Query<Entity, With<Duck>>,
+    astronaut_roots: Query<Entity, With<Astronaut>>,
+    parents: Query<&Parent>,
+    mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
 ) {
-    for mut player in &mut players {
-        player.play(duck_assets.animation.clone());
-        player.pause();
-        player.set_speed(0.0);
+    let duck_entities: Vec<Entity> = duck_roots.iter().collect();
+    let astronaut_entities: Vec<Entity> = astronaut_roots.iter().collect();
+    if duck_entities.is_empty() && astronaut_entities.is_empty() {
+        return;
+    }
+
+    for (entity, mut player) in &mut players {
+        if is_descendant_of(entity, &duck_entities, &parents) {
+            player.play(duck_assets.animation.clone());
+            player.pause();
+            player.set_speed(0.0);
+        } else if is_descendant_of(entity, &astronaut_entities, &parents) {
+            player.play(astronaut_assets.animation.clone());
+            player.pause();
+            player.set_speed(0.0);
+        }
     }
 }
 
-fn remove_duck_cameras(
+fn remove_scene_cameras(
     duck_roots: Query<Entity, With<Duck>>,
+    astronaut_roots: Query<Entity, With<Astronaut>>,
     parents: Query<&Parent>,
     cameras: Query<Entity, Added<Camera>>,
     mut commands: Commands,
 ) {
-    let duck_entities: Vec<Entity> = duck_roots.iter().collect();
-    if duck_entities.is_empty() {
+    let mut roots: Vec<Entity> = duck_roots.iter().collect();
+    roots.extend(astronaut_roots.iter());
+    if roots.is_empty() {
         return;
     }
 
     for entity in &cameras {
-        if is_descendant_of(entity, &duck_entities, &parents) {
+        if is_descendant_of(entity, &roots, &parents) {
             commands.entity(entity).remove::<Camera>();
             commands.entity(entity).remove::<Camera3d>();
         }
