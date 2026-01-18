@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::log::{Level, LogPlugin};
+use bevy::pbr::DirectionalLightShadowMap;
 use bevy::render::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::texture::ImagePlugin;
@@ -81,10 +82,11 @@ fn setup_lighting(mut commands: Commands) {
         color: Color::rgb(0.9, 0.9, 1.0),
         brightness: 0.35,
     });
+    commands.insert_resource(DirectionalLightShadowMap { size: 2048 });
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             illuminance: 12000.0,
-            shadows_enabled: false,
+            shadows_enabled: true,
             ..default()
         },
         transform: Transform::from_rotation(Quat::from_euler(
