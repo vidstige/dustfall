@@ -1,29 +1,30 @@
 use bevy::prelude::*;
 
-pub struct TileAtlas {
+pub struct TextureAtlas {
+    pub handle: Handle<Image>,
     columns: usize,
     rows: usize,
 }
 
-impl TileAtlas {
-    pub fn from_image(image: &Image, columns: usize) -> Self {
-        assert!(columns > 0, "tile atlas columns must be non-zero");
-
+impl TextureAtlas {
+    pub fn from_image(image: &Image, patch_size: usize, handle: Handle<Image>) -> Self {
+        assert!(patch_size > 0, "texture atlas patch size must be non-zero");
         let width = image.texture_descriptor.size.width as usize;
         let height = image.texture_descriptor.size.height as usize;
-        let tile_width = width / columns;
-        assert!(tile_width > 0, "tile atlas width is too small");
         assert!(
-            width % columns == 0,
-            "tile atlas width must be divisible by columns"
-        );
-        assert!(
-            height % tile_width == 0,
-            "tile atlas height must be divisible by tile width"
+            width % patch_size == 0 && height % patch_size == 0,
+            "texture atlas size must be divisible by patch size"
         );
 
-        let rows = height / tile_width;
-        Self { columns, rows }
+        let columns = width / patch_size;
+        let rows = height / patch_size;
+        assert!(columns > 0 && rows > 0, "texture atlas is empty");
+
+        Self {
+            handle,
+            columns,
+            rows,
+        }
     }
 
     pub fn uv_bounds(&self, index: usize) -> (Vec2, Vec2) {

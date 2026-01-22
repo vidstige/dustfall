@@ -12,7 +12,7 @@ use bevy::app::PostUpdate;
 use bevy::gltf::Gltf;
 
 mod isometric;
-mod normal_map_atlas;
+mod texture_atlas;
 
 const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
@@ -29,7 +29,6 @@ struct TileMap {
     tiles: Vec<u32>,
 }
 
-use normal_map_atlas::NormalMapAtlas;
 
 #[derive(Resource)]
 struct HeightmapHandle(Handle<Image>);
@@ -145,7 +144,7 @@ fn spawn_tiles_when_ready(
 
     let normal_map = build_heightmap_normal_map(&heightmap_image, pixel_stride);
     let normal_handle = images.add(normal_map);
-    let atlas = NormalMapAtlas::from_heightmap(
+    let atlas = texture_atlas::TextureAtlas::from_image(
         &heightmap_image,
         HEIGHTMAP_PATCH_SIZE,
         normal_handle,
@@ -239,7 +238,7 @@ fn is_descendant_of(
     }
 }
 
-fn build_grid_meshes(map: &TileMap, atlas: &NormalMapAtlas) -> Vec<Mesh> {
+fn build_grid_meshes(map: &TileMap, atlas: &texture_atlas::TextureAtlas) -> Vec<Mesh> {
     assert!(
         map.width % CHUNK_SIZE == 0 && map.height % CHUNK_SIZE == 0,
         "map dimensions must be divisible by chunk size"
@@ -269,7 +268,7 @@ fn build_grid_meshes(map: &TileMap, atlas: &NormalMapAtlas) -> Vec<Mesh> {
 
 fn build_chunk_mesh(
     map: &TileMap,
-    atlas: &NormalMapAtlas,
+    atlas: &texture_atlas::TextureAtlas,
     chunk_x: usize,
     chunk_y: usize,
     half_w: f32,
