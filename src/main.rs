@@ -317,8 +317,8 @@ fn checker_board(width: usize, height: usize) -> TileMap {
     let mut tiles = Vec::with_capacity(width * height);
     for y in 0..height {
         for x in 0..width {
-            let tile_index = if (x + y) % 2 == 0 { 0 } else { 1 };
-            tiles.push(tile_index);
+            let tile_index = (x + y) % 2;
+            tiles.push(tile_index as u32);
         }
     }
 
