@@ -25,6 +25,7 @@ const HEIGHTMAP_PATCH_SIZE: usize = 32;
 struct TileMap {
     width: usize,
     height: usize,
+    tiles: Vec<u32>,
 }
 
 #[derive(Resource)]
@@ -274,7 +275,7 @@ fn build_grid_meshes(
     for chunk_y in 0..chunks_y {
         for chunk_x in 0..chunks_x {
             meshes.push(build_chunk_mesh(
-                map.width,
+                map,
                 tiles_per_row,
                 tiles_per_col,
                 chunk_x,
@@ -290,7 +291,7 @@ fn build_grid_meshes(
 }
 
 fn build_chunk_mesh(
-    map_width: usize,
+    map: &TileMap,
     tiles_per_row: usize,
     tiles_per_col: usize,
     chunk_x: usize,
@@ -313,7 +314,7 @@ fn build_chunk_mesh(
             let tile_y = tile_y_start + local_y;
             let world_x = tile_x as f32 * TILE_WORLD_SIZE - half_w;
             let world_z = tile_y as f32 * TILE_WORLD_SIZE - half_h;
-            let tile_index = tile_y * map_width + tile_x;
+            let tile_index = map.tile_index(tile_x, tile_y) as usize;
             let patch_x = tile_index % tiles_per_row;
             let patch_y = (tile_index / tiles_per_row) % tiles_per_col;
             let uv_min = Vec2::new(
@@ -344,8 +345,26 @@ fn build_chunk_mesh(
     mesh
 }
 
+impl TileMap {
+    fn tile_index(&self, x: usize, y: usize) -> u32 {
+        self.tiles[y * self.width + x]
+    }
+}
+
 fn checker_board(width: usize, height: usize) -> TileMap {
-    TileMap { width, height }
+    let mut tiles = Vec::with_capacity(width * height);
+    for y in 0..height {
+        for x in 0..width {
+            let tile_index = if (x + y) % 2 == 0 { 0 } else { 1 };
+            tiles.push(tile_index);
+        }
+    }
+
+    TileMap {
+        width,
+        height,
+        tiles,
+    }
 }
 
 fn push_tile(
