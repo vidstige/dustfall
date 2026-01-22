@@ -17,3 +17,4 @@ bevy = { version = "0.11.3", default-features = false, features = [
   "png",
 ] }
 bevy_gltf = { version = "0.11.3", features = ["bevy_animation"] }
+rand = "0.8"

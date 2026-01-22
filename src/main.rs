@@ -7,6 +7,7 @@ use bevy::render::texture::ImagePlugin;
 use bevy::animation::AnimationPlayer;
 use bevy::app::PostUpdate;
 use bevy::gltf::Gltf;
+use rand::Rng;
 
 mod heightmap_normal;
 mod isometric;
@@ -52,7 +53,7 @@ fn main() {
                     filter: "wgpu=error,naga=warn,bevy_gltf::loader=error".to_string(),
                 }),
         )
-        .insert_resource(checker_board(GRID_WIDTH, GRID_HEIGHT))
+        .insert_resource(random_map(GRID_WIDTH, GRID_HEIGHT))
         .add_systems(
             Startup,
             (
@@ -308,16 +309,19 @@ impl TileMap {
     }
 }
 
-fn checker_board(width: usize, height: usize) -> TileMap {
+fn random_map(width: usize, height: usize) -> TileMap {
     let mut tiles = Vec::with_capacity(width * height);
-    for y in 0..height {
-        for x in 0..width {
-            let tile_index = (x + y) % 2;
-            tiles.push(tile_index as u32);
+    let mut rng = rand::thread_rng();
+    for _y in 0..height {
+        for _x in 0..width {
+            tiles.push(rng.gen::<u32>());
         }
     }
 
-    TileMap { width, height, tiles,
+    TileMap {
+        width,
+        height,
+        tiles,
     }
 }
 
