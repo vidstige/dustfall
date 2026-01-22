@@ -2,6 +2,7 @@
 name = "dustfall"
 version = "0.1.0"
 edition = "2021"
+default-run = "dustfall"
 
 [dependencies]
 bevy = { version = "0.11.3", default-features = false, features = [
