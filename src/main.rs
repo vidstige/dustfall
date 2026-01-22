@@ -72,7 +72,7 @@ fn main() {
                 init_scene_animations,
             ),
         )
-        .add_systems(PostUpdate, remove_astronaut_cameras)
+        .add_systems(PostUpdate, remove_cameras::<Astronaut>)
         .run();
 }
 
@@ -203,13 +203,13 @@ fn init_scene_animations(
     }
 }
 
-fn remove_astronaut_cameras(
-    astronaut_roots: Query<Entity, With<Astronaut>>,
+fn remove_cameras<T: Component>(
+    component: Query<Entity, With<T>>,
     parents: Query<&Parent>,
     cameras: Query<Entity, Added<Camera>>,
     mut commands: Commands,
 ) {
-    let roots: Vec<Entity> = astronaut_roots.iter().collect();
+    let roots: Vec<Entity> = component.iter().collect();
     if roots.is_empty() {
         return;
     }
