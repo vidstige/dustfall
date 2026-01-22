@@ -12,6 +12,7 @@ use bevy::app::PostUpdate;
 use bevy::gltf::Gltf;
 
 mod isometric;
+mod normal_map_atlas;
 
 const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
@@ -27,6 +28,8 @@ struct TileMap {
     height: usize,
     tiles: Vec<u32>,
 }
+
+use normal_map_atlas::NormalMapAtlas;
 
 #[derive(Resource)]
 struct HeightmapHandle(Handle<Image>);
@@ -132,48 +135,30 @@ fn spawn_tiles_when_ready(
         return;
     }
 
-    let (heightmap_width, heightmap_height, pixel_stride, heightmap_data) = {
+    let (heightmap_image, pixel_stride) = {
         let image = match images.get(&heightmap_handle.0) {
             Some(image) => image,
             None => return,
         };
-        let pixel_stride = image.texture_descriptor.format.pixel_size();
-        (
-            image.texture_descriptor.size.width as usize,
-            image.texture_descriptor.size.height as usize,
-            pixel_stride,
-            image.data.clone(),
-        )
+        (image.clone(), image.texture_descriptor.format.pixel_size())
     };
 
-    let normal_map = build_heightmap_normal_map(
-        heightmap_width,
-        heightmap_height,
-        pixel_stride,
-        &heightmap_data,
-    );
+    let normal_map = build_heightmap_normal_map(&heightmap_image, pixel_stride);
     let normal_handle = images.add(normal_map);
-    assert!(HEIGHTMAP_PATCH_SIZE > 0, "heightmap patch size must be non-zero");
-    assert!(
-        heightmap_width % HEIGHTMAP_PATCH_SIZE == 0
-            && heightmap_height % HEIGHTMAP_PATCH_SIZE == 0,
-        "heightmap size must be divisible by patch size"
-    );
-    let tiles_per_row = heightmap_width / HEIGHTMAP_PATCH_SIZE;
-    let tiles_per_col = heightmap_height / HEIGHTMAP_PATCH_SIZE;
-    let uv_patch = Vec2::new(
-        HEIGHTMAP_PATCH_SIZE as f32 / heightmap_width as f32,
-        HEIGHTMAP_PATCH_SIZE as f32 / heightmap_height as f32,
+    let atlas = NormalMapAtlas::from_heightmap(
+        &heightmap_image,
+        HEIGHTMAP_PATCH_SIZE,
+        normal_handle,
     );
     let material = materials.add(StandardMaterial {
         base_color: Color::rgb(0.62, 0.6, 0.56),
-        normal_map_texture: Some(normal_handle),
+        normal_map_texture: Some(atlas.handle.clone()),
         perceptual_roughness: 0.9,
         cull_mode: None,
         ..default()
     });
 
-    for mut mesh in build_grid_meshes(&map, tiles_per_row, tiles_per_col, uv_patch) {
+    for mut mesh in build_grid_meshes(&map, &atlas) {
         let _ = mesh.generate_tangents();
         commands.spawn(PbrBundle {
             mesh: meshes.add(mesh),
@@ -254,17 +239,11 @@ fn is_descendant_of(
     }
 }
 
-fn build_grid_meshes(
-    map: &TileMap,
-    tiles_per_row: usize,
-    tiles_per_col: usize,
-    uv_patch: Vec2,
-) -> Vec<Mesh> {
+fn build_grid_meshes(map: &TileMap, atlas: &NormalMapAtlas) -> Vec<Mesh> {
     assert!(
         map.width % CHUNK_SIZE == 0 && map.height % CHUNK_SIZE == 0,
         "map dimensions must be divisible by chunk size"
     );
-    assert!(tiles_per_row > 0 && tiles_per_col > 0, "heightmap atlas is empty");
 
     let chunks_x = map.width / CHUNK_SIZE;
     let chunks_y = map.height / CHUNK_SIZE;
@@ -276,13 +255,11 @@ fn build_grid_meshes(
         for chunk_x in 0..chunks_x {
             meshes.push(build_chunk_mesh(
                 map,
-                tiles_per_row,
-                tiles_per_col,
+                atlas,
                 chunk_x,
                 chunk_y,
                 half_w,
                 half_h,
-                uv_patch,
             ));
         }
     }
@@ -292,13 +269,11 @@ fn build_grid_meshes(
 
 fn build_chunk_mesh(
     map: &TileMap,
-    tiles_per_row: usize,
-    tiles_per_col: usize,
+    atlas: &NormalMapAtlas,
     chunk_x: usize,
     chunk_y: usize,
     half_w: f32,
     half_h: f32,
-    uv_patch: Vec2,
 ) -> Mesh {
     let mut positions = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
     let mut normals = Vec::with_capacity(CHUNK_SIZE * CHUNK_SIZE * 4);
@@ -315,13 +290,7 @@ fn build_chunk_mesh(
             let world_x = tile_x as f32 * TILE_WORLD_SIZE - half_w;
             let world_z = tile_y as f32 * TILE_WORLD_SIZE - half_h;
             let tile_index = map.tile_index(tile_x, tile_y) as usize;
-            let patch_x = tile_index % tiles_per_row;
-            let patch_y = (tile_index / tiles_per_row) % tiles_per_col;
-            let uv_min = Vec2::new(
-                patch_x as f32 * uv_patch.x,
-                patch_y as f32 * uv_patch.y,
-            );
-            let uv_max = uv_min + uv_patch;
+            let (uv_min, uv_max) = atlas.uv_bounds(tile_index);
 
             push_tile(
                 &mut positions,
@@ -403,12 +372,10 @@ fn push_tile(
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
 
-fn build_heightmap_normal_map(
-    width: usize,
-    height: usize,
-    pixel_stride: usize,
-    heightmap_data: &[u8],
-) -> Image {
+fn build_heightmap_normal_map(image: &Image, pixel_stride: usize) -> Image {
+    let width = image.texture_descriptor.size.width as usize;
+    let height = image.texture_descriptor.size.height as usize;
+    let heightmap_data = &image.data;
     assert!(pixel_stride >= 1, "heightmap texture must be uncompressed");
     assert!(
         heightmap_data.len() >= width * height * pixel_stride,
