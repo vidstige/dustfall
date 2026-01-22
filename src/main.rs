@@ -210,10 +210,6 @@ fn remove_cameras<T: Component>(
     mut commands: Commands,
 ) {
     let roots: Vec<Entity> = component.iter().collect();
-    if roots.is_empty() {
-        return;
-    }
-
     for entity in &cameras {
         if is_descendant_of(entity, &roots, &parents) {
             commands.entity(entity).remove::<Camera>();
