@@ -74,6 +74,7 @@ pub fn update_iso_camera(
         }
         scroll_delta += delta;
     }
+    scroll_delta = -scroll_delta; // natural scroll
 
     let window = windows.get_single().ok();
     let cursor_pos = window.and_then(|window| window.cursor_position());
