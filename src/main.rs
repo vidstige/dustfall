@@ -252,14 +252,8 @@ fn build_grid_meshes(map: &TileMap, atlas: &texture_atlas::TextureAtlas) -> Vec<
     let mut meshes = Vec::with_capacity(chunks_x * chunks_y);
     for chunk_y in 0..chunks_y {
         for chunk_x in 0..chunks_x {
-            meshes.push(build_chunk_mesh(
-                map,
-                atlas,
-                chunk_x,
-                chunk_y,
-                half_w,
-                half_h,
-            ));
+            let mesh = build_chunk_mesh(map, atlas, chunk_x, chunk_y, half_w, half_h);
+            meshes.push(mesh);
         }
     }
 
@@ -328,10 +322,7 @@ fn checker_board(width: usize, height: usize) -> TileMap {
         }
     }
 
-    TileMap {
-        width,
-        height,
-        tiles,
+    TileMap { width, height, tiles,
     }
 }
 
