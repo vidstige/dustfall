@@ -18,6 +18,7 @@ const GRID_HEIGHT: usize = 256;
 const TILE_WORLD_SIZE: f32 = 0.5;
 const CHUNK_SIZE: usize = 16;
 const HEIGHTMAP_PATH: &str = "images/height-map.png";
+const ALBEDO_PATH: &str = "images/albedo-map.png";
 const HEIGHTMAP_BUMP_SCALE: f32 = 8.0;
 const HEIGHTMAP_PATCH_SIZE: usize = 32;
 
@@ -31,6 +32,9 @@ struct TileMap {
 
 #[derive(Resource)]
 struct HeightmapHandle(Handle<Image>);
+
+#[derive(Resource)]
+struct AlbedoHandle(Handle<Image>);
 
 #[derive(Resource)]
 struct AstronautAssets {
@@ -58,7 +62,7 @@ fn main() {
             Startup,
             (
                 isometric::spawn_iso_camera,
-                setup_heightmap,
+                setup_textures,
                 setup_lighting,
                 setup_astronaut,
             ),
@@ -75,9 +79,11 @@ fn main() {
         .run();
 }
 
-fn setup_heightmap(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let handle = asset_server.load(HEIGHTMAP_PATH);
-    commands.insert_resource(HeightmapHandle(handle));
+fn setup_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let heightmap_handle = asset_server.load(HEIGHTMAP_PATH);
+    let albedo_handle = asset_server.load(ALBEDO_PATH);
+    commands.insert_resource(HeightmapHandle(heightmap_handle));
+    commands.insert_resource(AlbedoHandle(albedo_handle));
 }
 
 fn setup_lighting(mut commands: Commands) {
@@ -127,6 +133,7 @@ fn spawn_tiles_when_ready(
     mut images: ResMut<Assets<Image>>,
     map: Res<TileMap>,
     heightmap_handle: Res<HeightmapHandle>,
+    albedo_handle: Res<AlbedoHandle>,
     mut spawned: Local<bool>,
 ) {
     if *spawned {
@@ -137,6 +144,15 @@ fn spawn_tiles_when_ready(
         Some(image) => image.clone(),
         None => return,
     };
+    let albedo_image = match images.get(&albedo_handle.0) {
+        Some(image) => image.clone(),
+        None => return,
+    };
+    assert_eq!(
+        heightmap_image.texture_descriptor.size,
+        albedo_image.texture_descriptor.size,
+        "albedo map must match heightmap dimensions"
+    );
 
     let normal_map = heightmap_normal::build_heightmap_normal_map(
         &heightmap_image,
@@ -151,6 +167,7 @@ fn spawn_tiles_when_ready(
     );
     let material = materials.add(StandardMaterial {
         base_color: Color::rgb(0.62, 0.6, 0.56),
+        base_color_texture: Some(albedo_handle.0.clone()),
         normal_map_texture: Some(atlas.handle.clone()),
         perceptual_roughness: 0.9,
         cull_mode: None,
