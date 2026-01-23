@@ -19,7 +19,8 @@ const TILE_WORLD_SIZE: f32 = 4.0;
 const CHUNK_SIZE: usize = 16;
 const HEIGHTMAP_PATH: &str = "images/height-map.png";
 const ALBEDO_PATH: &str = "images/albedo-map.png";
-const HEIGHTMAP_BUMP_SCALE: f32 = 64.0;
+const HEIGHTMAP_BUMP_SLOPE: f32 = 16.0;
+const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_WORLD_SIZE;
 const HEIGHTMAP_PATCH_SIZE: usize = 128;
 
 #[derive(Resource)]
