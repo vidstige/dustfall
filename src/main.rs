@@ -15,12 +15,12 @@ mod texture_atlas;
 
 const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
-const TILE_WORLD_SIZE: f32 = 0.5;
+const TILE_WORLD_SIZE: f32 = 4.0;
 const CHUNK_SIZE: usize = 16;
 const HEIGHTMAP_PATH: &str = "images/height-map.png";
 const ALBEDO_PATH: &str = "images/albedo-map.png";
-const HEIGHTMAP_BUMP_SCALE: f32 = 8.0;
-const HEIGHTMAP_PATCH_SIZE: usize = 32;
+const HEIGHTMAP_BUMP_SCALE: f32 = 64.0;
+const HEIGHTMAP_PATCH_SIZE: usize = 128;
 
 #[derive(Resource)]
 struct TileMap {
@@ -94,7 +94,7 @@ fn setup_lighting(mut commands: Commands) {
     commands.insert_resource(DirectionalLightShadowMap { size: 2048 });
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
-            illuminance: 12000.0,
+            illuminance: 18000.0,
             shadows_enabled: true,
             ..default()
         },
@@ -166,7 +166,7 @@ fn spawn_tiles_when_ready(
         normal_handle,
     );
     let material = materials.add(StandardMaterial {
-        base_color: Color::rgb(0.62, 0.6, 0.56),
+        base_color: Color::rgb(0.4, 0.4, 0.4),
         base_color_texture: Some(albedo_handle.0.clone()),
         normal_map_texture: Some(atlas.handle.clone()),
         perceptual_roughness: 0.9,
