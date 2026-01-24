@@ -10,9 +10,9 @@ const CAMERA_DISTANCE_SCALE: f32 = 2.2;
 
 const TRACKPAD_PAN_SCALE: f32 = 0.1;
 const SCROLL_ZOOM_RATE: f32 = 0.02;
-pub const INITIAL_ZOOM: f32 = 10.0;
-const MIN_ZOOM: f32 = 4.0;
-const MAX_ZOOM: f32 = 30.0;
+pub const INITIAL_ZOOM: f32 = 20.0;
+const MIN_ZOOM: f32 = 8.0;
+const MAX_ZOOM: f32 = 60.0;
 
 #[derive(Resource)]
 pub struct IsoCamera {

@@ -16,14 +16,15 @@ mod texture_atlas;
 
 const GRID_WIDTH: usize = 256;
 const GRID_HEIGHT: usize = 256;
-const TILE_WORLD_SIZE: f32 = 4.0;
+// World units are in _meters_
+const TILE_SIZE: f32 = 4.0;
 const CHUNK_SIZE: usize = 16;
 const HEIGHTMAP_PATH: &str = "images/height-map.png";
 const ALBEDO_PATH: &str = "images/albedo-map.png";
 const HEIGHTMAP_BUMP_SLOPE: f32 = 16.0;
-const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_WORLD_SIZE;
+const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_SIZE;
 const HEIGHTMAP_PATCH_SIZE: usize = 128;
-const ASTRONAUT_WALK_SPEED: f32 = 1.4;
+const ASTRONAUT_WALK_SPEED: f32 = 2.8;
 const ASTRONAUT_TURN_SPEED: f32 = 4.0;
 const ASTRONAUT_STOP_DISTANCE: f32 = 0.05;
 // The astronaut model's forward axis points to +X, so we rotate by -90deg to align with +Z.
@@ -145,7 +146,6 @@ fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
             scene,
             transform: Transform {
                 translation: spawn_translation,
-                scale: Vec3::splat(0.5),
                 ..default()
             },
             ..default()
@@ -191,7 +191,7 @@ fn spawn_tiles_when_ready(
     let normal_map = heightmap_normal::build_heightmap_normal_map(
         &heightmap_image,
         HEIGHTMAP_BUMP_SCALE,
-        TILE_WORLD_SIZE,
+        TILE_SIZE,
     );
     let normal_handle = images.add(normal_map);
     let atlas = texture_atlas::TextureAtlas::from_image(
@@ -301,8 +301,8 @@ fn build_grid_meshes(map: &TileMap, atlas: &texture_atlas::TextureAtlas) -> Vec<
 
     let chunks_x = map.width / CHUNK_SIZE;
     let chunks_y = map.height / CHUNK_SIZE;
-    let half_w = map.width as f32 * TILE_WORLD_SIZE * 0.5;
-    let half_h = map.height as f32 * TILE_WORLD_SIZE * 0.5;
+    let half_w = map.width as f32 * TILE_SIZE * 0.5;
+    let half_h = map.height as f32 * TILE_SIZE * 0.5;
 
     let mut meshes = Vec::with_capacity(chunks_x * chunks_y);
     for chunk_y in 0..chunks_y {
@@ -335,8 +335,8 @@ fn build_chunk_mesh(
         for local_x in 0..CHUNK_SIZE {
             let tile_x = tile_x_start + local_x;
             let tile_y = tile_y_start + local_y;
-            let world_x = tile_x as f32 * TILE_WORLD_SIZE - half_w;
-            let world_z = tile_y as f32 * TILE_WORLD_SIZE - half_h;
+            let world_x = tile_x as f32 * TILE_SIZE - half_w;
+            let world_z = tile_y as f32 * TILE_SIZE - half_h;
             let tile_index = map.tile_index(tile_x, tile_y) as usize;
             let (uv_min, uv_max) = atlas.uv_bounds(tile_index);
 
@@ -347,7 +347,7 @@ fn build_chunk_mesh(
                 &mut indices,
                 world_x,
                 world_z,
-                TILE_WORLD_SIZE,
+                TILE_SIZE,
                 uv_min,
                 uv_max,
             );
@@ -427,7 +427,7 @@ fn update_astronaut_movement(
     camera_query: Query<(&Camera, &GlobalTransform), With<isometric::IsoCameraTag>>,
     mut astronauts: Query<(&mut Transform, &mut AstronautController), With<Astronaut>>,
 ) {
-    if mouse_buttons.just_pressed(MouseButton::Left) {
+    if mouse_buttons.pressed(MouseButton::Left) {
         let window = windows.get_single().ok();
         let cursor_pos = window.and_then(|window| window.cursor_position());
         let camera = camera_query.get_single().ok();
