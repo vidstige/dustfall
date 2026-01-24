@@ -23,8 +23,8 @@ const ALBEDO_PATH: &str = "images/albedo-map.png";
 const HEIGHTMAP_BUMP_SLOPE: f32 = 16.0;
 const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_WORLD_SIZE;
 const HEIGHTMAP_PATCH_SIZE: usize = 128;
-const ASTRONAUT_WALK_SPEED: f32 = 4.0;
-const ASTRONAUT_TURN_SPEED: f32 = 8.0;
+const ASTRONAUT_WALK_SPEED: f32 = 1.4;
+const ASTRONAUT_TURN_SPEED: f32 = 4.0;
 const ASTRONAUT_STOP_DISTANCE: f32 = 0.05;
 // The astronaut model's forward axis points to +X, so we rotate by -90deg to align with +Z.
 const ASTRONAUT_FORWARD_YAW_OFFSET: f32 = -std::f32::consts::FRAC_PI_2;
@@ -59,9 +59,20 @@ struct AstronautController {
     moving: bool,
 }
 
+#[derive(Resource, Default)]
+struct AstronautAnimations {
+    clips: Option<AstronautAnimationClips>,
+}
+
+struct AstronautAnimationClips {
+    idle: Handle<AnimationClip>,
+    walk: Handle<AnimationClip>,
+}
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
+        .insert_resource(AstronautAnimations::default())
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -88,7 +99,7 @@ fn main() {
                 isometric::update_iso_camera,
                 spawn_tiles_when_ready,
                 init_scene_animations,
-                update_astronaut_movement,
+                (update_astronaut_movement, update_astronaut_animation_state).chain(),
             ),
         )
         .add_systems(PostUpdate, remove_cameras::<Astronaut>)
@@ -212,6 +223,7 @@ fn spawn_tiles_when_ready(
 fn init_scene_animations(
     astronaut_assets: Res<AstronautAssets>,
     gltfs: Res<Assets<Gltf>>,
+    mut astronaut_animations: ResMut<AstronautAnimations>,
     astronaut_roots: Query<Entity, With<Astronaut>>,
     parents: Query<&Parent>,
     mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
@@ -224,18 +236,25 @@ fn init_scene_animations(
     let Some(gltf) = gltfs.get(&astronaut_assets.gltf) else {
         return;
     };
-    let animation = gltf
-        .named_animations
-        .get("Idle_Breath")
-        .cloned()
-        .or_else(|| gltf.animations.first().cloned());
-    let Some(animation) = animation else {
+    if astronaut_animations.clips.is_none() {
+        let Some(idle) = gltf.named_animations.get("Idle_Breath").cloned() else {
+            return;
+        };
+        let Some(walk) = gltf.named_animations.get("Walk_Loop").cloned() else {
+            return;
+        };
+        astronaut_animations.clips = Some(AstronautAnimationClips {
+            idle,
+            walk,
+        });
+    }
+    let Some(clips) = astronaut_animations.clips.as_ref() else {
         return;
     };
 
     for (entity, mut player) in &mut players {
         if is_descendant_of(entity, &astronaut_entities, &parents) {
-            player.play(animation.clone());
+            player.play(clips.idle.clone());
             player.repeat();
             player.set_speed(1.0);
             player.resume();
@@ -453,6 +472,33 @@ fn update_astronaut_movement(
             controller.moving = false;
         } else {
             controller.moving = true;
+        }
+    }
+}
+
+fn update_astronaut_animation_state(
+    animations: Res<AstronautAnimations>,
+    astronauts: Query<(Entity, &AstronautController), With<Astronaut>>,
+    parents: Query<&Parent>,
+    mut players: Query<(Entity, &mut AnimationPlayer)>,
+) {
+    let Some(clips) = animations.clips.as_ref() else {
+        return;
+    };
+
+    for (astronaut_entity, controller) in &astronauts {
+        let desired = if controller.moving {
+            clips.walk.clone()
+        } else {
+            clips.idle.clone()
+        };
+        let roots = [astronaut_entity];
+        for (player_entity, mut player) in &mut players {
+            if is_descendant_of(player_entity, &roots, &parents) {
+                player.play(desired.clone());
+                player.repeat();
+                player.resume();
+            }
         }
     }
 }
