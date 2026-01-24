@@ -24,7 +24,8 @@ const ALBEDO_PATH: &str = "images/albedo-map.png";
 const HEIGHTMAP_BUMP_SLOPE: f32 = 16.0;
 const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_SIZE;
 const HEIGHTMAP_PATCH_SIZE: usize = 128;
-const ASTRONAUT_WALK_SPEED: f32 = 2.8;
+const ASTRONAUT_SCALE: f32 = 0.42;  // Scales to ~1.7m
+const ASTRONAUT_WALK_SPEED: f32 = 1.2;
 const ASTRONAUT_TURN_SPEED: f32 = 4.0;
 const ASTRONAUT_STOP_DISTANCE: f32 = 0.05;
 // The astronaut model's forward axis points to +X, so we rotate by -90deg to align with +Z.
@@ -146,6 +147,7 @@ fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
             scene,
             transform: Transform {
                 translation: spawn_translation,
+                scale: Vec3::splat(ASTRONAUT_SCALE),
                 ..default()
             },
             ..default()
