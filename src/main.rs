@@ -7,6 +7,7 @@ use bevy::render::texture::ImagePlugin;
 use bevy::animation::AnimationPlayer;
 use bevy::app::PostUpdate;
 use bevy::gltf::Gltf;
+use bevy::window::PrimaryWindow;
 use rand::Rng;
 
 mod heightmap_normal;
@@ -22,6 +23,11 @@ const ALBEDO_PATH: &str = "images/albedo-map.png";
 const HEIGHTMAP_BUMP_SLOPE: f32 = 16.0;
 const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_WORLD_SIZE;
 const HEIGHTMAP_PATCH_SIZE: usize = 128;
+const ASTRONAUT_WALK_SPEED: f32 = 4.0;
+const ASTRONAUT_TURN_SPEED: f32 = 8.0;
+const ASTRONAUT_STOP_DISTANCE: f32 = 0.05;
+// The astronaut model's forward axis points to +X, so we rotate by -90deg to align with +Z.
+const ASTRONAUT_FORWARD_YAW_OFFSET: f32 = -std::f32::consts::FRAC_PI_2;
 
 #[derive(Resource)]
 struct TileMap {
@@ -44,6 +50,14 @@ struct AstronautAssets {
 
 #[derive(Component)]
 struct Astronaut;
+
+#[derive(Component)]
+struct AstronautController {
+    target: Vec3,
+    speed: f32,
+    turn_speed: f32,
+    moving: bool,
+}
 
 fn main() {
     App::new()
@@ -74,6 +88,7 @@ fn main() {
                 isometric::update_iso_camera,
                 spawn_tiles_when_ready,
                 init_scene_animations,
+                update_astronaut_movement,
             ),
         )
         .add_systems(PostUpdate, remove_cameras::<Astronaut>)
@@ -112,18 +127,25 @@ fn setup_lighting(mut commands: Commands) {
 fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
     let gltf = asset_server.load("models/astronaut/astronaut-textured.glb");
     let scene = asset_server.load("models/astronaut/astronaut-textured.glb#Scene0");
+    let spawn_translation = Vec3::new(2.0, 0.0, 0.5);
     commands.insert_resource(AstronautAssets { gltf });
     commands.spawn((
         SceneBundle {
             scene,
             transform: Transform {
-                translation: Vec3::new(2.0, 0.0, 0.5),
+                translation: spawn_translation,
                 scale: Vec3::splat(0.5),
                 ..default()
             },
             ..default()
         },
         Astronaut,
+        AstronautController {
+            target: spawn_translation,
+            speed: ASTRONAUT_WALK_SPEED,
+            turn_speed: ASTRONAUT_TURN_SPEED,
+            moving: false,
+        },
     ));
 }
 
@@ -377,4 +399,60 @@ fn push_tile(
     ]);
 
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+}
+
+fn update_astronaut_movement(
+    time: Res<Time>,
+    mouse_buttons: Res<Input<MouseButton>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<isometric::IsoCameraTag>>,
+    mut astronauts: Query<(&mut Transform, &mut AstronautController), With<Astronaut>>,
+) {
+    if mouse_buttons.just_pressed(MouseButton::Left) {
+        let window = windows.get_single().ok();
+        let cursor_pos = window.and_then(|window| window.cursor_position());
+        let camera = camera_query.get_single().ok();
+        if let (Some(cursor_pos), Some((camera, camera_transform))) = (cursor_pos, camera) {
+            if let Some(world_pos) =
+                isometric::cursor_world_on_plane(camera, camera_transform, cursor_pos)
+            {
+                for (transform, mut controller) in &mut astronauts {
+                    controller.target = Vec3::new(
+                        world_pos.x,
+                        transform.translation.y,
+                        world_pos.z,
+                    );
+                }
+            }
+        }
+    }
+
+    let dt = time.delta_seconds();
+    for (mut transform, mut controller) in &mut astronauts {
+        let mut to_target = controller.target - transform.translation;
+        to_target.y = 0.0;
+        let distance = to_target.length();
+        if distance <= ASTRONAUT_STOP_DISTANCE || dt <= 0.0 {
+            controller.moving = false;
+            continue;
+        }
+
+        let dir = to_target / distance;
+        let target_rot =
+            Quat::from_rotation_y(dir.x.atan2(dir.z) + ASTRONAUT_FORWARD_YAW_OFFSET);
+        let turn_t = (controller.turn_speed * dt).clamp(0.0, 1.0);
+        transform.rotation = transform.rotation.slerp(target_rot, turn_t);
+
+        let travel = (controller.speed * dt).min(distance);
+        transform.translation += dir * travel;
+
+        let remaining = distance - travel;
+        if remaining <= ASTRONAUT_STOP_DISTANCE {
+            transform.translation.x = controller.target.x;
+            transform.translation.z = controller.target.z;
+            controller.moving = false;
+        } else {
+            controller.moving = true;
+        }
+    }
 }

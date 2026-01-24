@@ -78,7 +78,7 @@ pub fn update_iso_camera(
 
     let window = windows.get_single().ok();
     let cursor_pos = window.and_then(|window| window.cursor_position());
-    let dragging = mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Right);
+    let dragging = mouse_buttons.pressed(MouseButton::Right);
     if !dragging {
         camera.last_cursor_pos = None;
     }
@@ -154,7 +154,7 @@ fn cursor_pan_delta(
     Some(Vec2::new(world_from.x - world_to.x, world_from.z - world_to.z))
 }
 
-fn cursor_world_on_plane(
+pub fn cursor_world_on_plane(
     camera: &Camera,
     camera_transform: &GlobalTransform,
     cursor_pos: Vec2,
