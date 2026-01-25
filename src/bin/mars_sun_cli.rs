@@ -12,7 +12,7 @@ struct PlanetParameters {
 
 impl PlanetParameters {
     fn solar_longitude(&self, unix_seconds: i64) -> f32 {
-        let days_since_epoch = (unix_seconds - J2000_UNIX_SECONDS) as f32 / 86_400.0;
+        let days_since_epoch = unix_seconds as f32 / 86_400.0;
         let mean_motion = TAU / self.year_days;
         (days_since_epoch * mean_motion).rem_euclid(TAU)
     }
@@ -23,13 +23,11 @@ impl PlanetParameters {
     }
 
     fn local_solar_fraction(&self, unix_seconds: i64, longitude: f32) -> f32 {
-        let sols_since_epoch = (unix_seconds - J2000_UNIX_SECONDS) as f32 / self.sol_seconds;
+        let sols_since_epoch = unix_seconds as f32 / self.sol_seconds;
         let prime_meridian = sols_since_epoch.rem_euclid(1.0);
         (prime_meridian + longitude / TAU).rem_euclid(1.0)
     }
 }
-
-const J2000_UNIX_SECONDS: i64 = 946_728_000; // 2000-01-01T12:00:00Z
 
 const MARS: PlanetParameters = PlanetParameters {
     sol_seconds: 88_775.244,
