@@ -9,6 +9,8 @@ use bevy::app::PostUpdate;
 use bevy::gltf::Gltf;
 use bevy::window::PrimaryWindow;
 use rand::Rng;
+use std::f32::consts::TAU;
+use dustfall::solar::{self, Location};
 
 mod heightmap_normal;
 mod isometric;
@@ -30,6 +32,10 @@ const ASTRONAUT_TURN_SPEED: f32 = 4.0;
 const ASTRONAUT_STOP_DISTANCE: f32 = 0.05;
 // The astronaut model's forward axis points to +X, so we rotate by -90deg to align with +Z.
 const ASTRONAUT_FORWARD_YAW_OFFSET: f32 = -std::f32::consts::FRAC_PI_2;
+const DEFAULT_LOCATION: Location = Location {
+    latitude: 54.0 * (TAU / 360.0),
+    longitude: 137.4 * (TAU / 360.0),
+};
 
 #[derive(Resource)]
 struct TileMap {
@@ -101,6 +107,7 @@ fn main() {
                 isometric::update_iso_camera,
                 spawn_tiles_when_ready,
                 init_scene_animations,
+                update_sun_light,
                 (update_astronaut_movement, update_astronaut_animation_state).chain(),
             ),
         )
@@ -135,6 +142,20 @@ fn setup_lighting(mut commands: Commands) {
         )),
         ..default()
     });
+}
+
+fn update_sun_light(
+    time: Res<Time>,
+    mut lights: Query<&mut Transform, With<DirectionalLight>>,
+) {
+    let time_seconds = time.elapsed_seconds();
+    let (x, y, z) = solar::solar_direction(&solar::MARS, DEFAULT_LOCATION, time_seconds);
+    let sun_dir = Vec3::new(x, y, z);
+    let light_dir = -sun_dir.normalize_or_zero();
+    let rotation = Quat::from_rotation_arc(Vec3::NEG_Z, light_dir);
+    for mut transform in &mut lights {
+        transform.rotation = rotation;
+    }
 }
 
 fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {

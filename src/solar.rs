@@ -8,25 +8,25 @@ pub struct PlanetParameters {
 }
 
 impl PlanetParameters {
-    pub fn solar_longitude(&self, unix_seconds: i64) -> f32 {
-        let days_since_epoch = unix_seconds as f32 / 86_400.0;
+    pub fn solar_longitude(&self, time_seconds: f32) -> f32 {
+        let days_since_epoch = time_seconds / 86_400.0;
         let mean_motion = TAU / self.year_days;
         (days_since_epoch * mean_motion).rem_euclid(TAU)
     }
 
-    pub fn solar_declination(&self, unix_seconds: i64) -> f32 {
-        let ls = self.solar_longitude(unix_seconds);
+    pub fn solar_declination(&self, time_seconds: f32) -> f32 {
+        let ls = self.solar_longitude(time_seconds);
         (self.axial_tilt.sin() * ls.sin()).asin()
     }
 
-    pub fn local_solar_fraction(&self, unix_seconds: i64, longitude: f32) -> f32 {
-        let sols_since_epoch = unix_seconds as f32 / self.sol_seconds;
+    pub fn local_solar_fraction(&self, time_seconds: f32, longitude: f32) -> f32 {
+        let sols_since_epoch = time_seconds / self.sol_seconds;
         let prime_meridian = sols_since_epoch.rem_euclid(1.0);
         (prime_meridian + longitude / TAU).rem_euclid(1.0)
     }
 
-    pub fn local_mean_solar_time_hours(&self, unix_seconds: i64, longitude: f32) -> f32 {
-        self.local_solar_fraction(unix_seconds, longitude) * 24.0
+    pub fn local_mean_solar_time_hours(&self, time_seconds: f32, longitude: f32) -> f32 {
+        self.local_solar_fraction(time_seconds, longitude) * 24.0
     }
 }
 
@@ -46,11 +46,11 @@ pub struct Location {
 pub fn solar_direction(
     params: &PlanetParameters,
     location: Location,
-    unix_seconds: i64,
+    time_seconds: f32,
 ) -> (f32, f32, f32) {
     let lat = location.latitude;
-    let declination = params.solar_declination(unix_seconds);
-    let local_fraction = params.local_solar_fraction(unix_seconds, location.longitude);
+    let declination = params.solar_declination(time_seconds);
+    let local_fraction = params.local_solar_fraction(time_seconds, location.longitude);
     let local_time_angle = (local_fraction - 0.5) * TAU;
 
     let east = declination.cos() * local_time_angle.sin();
@@ -89,15 +89,15 @@ mod tests {
 
     #[test]
     fn solar_direction_is_normalized() {
-        let (x, y, z) = solar_direction(&MARS, LOCATION, 1_704_110_400);
+        let (x, y, z) = solar_direction(&MARS, LOCATION, 1_704_110_400.0);
         let len = (x * x + y * y + z * z).sqrt();
         assert!((len - 1.0).abs() < 1e-3, "len={len}");
     }
 
     #[test]
     fn local_time_progresses_through_day() {
-        let base = 1_704_067_200;
-        let later = base + 6 * 3600;
+        let base = 1_704_067_200.0;
+        let later = base + 6.0 * 3600.0;
         let lmst0 = MARS.local_mean_solar_time_hours(base, LOCATION.longitude);
         let lmst1 = MARS.local_mean_solar_time_hours(later, LOCATION.longitude);
         let delta = (lmst1 - lmst0 + 24.0).rem_euclid(24.0);
@@ -106,8 +106,8 @@ mod tests {
 
     #[test]
     fn solar_direction_varies_over_half_day() {
-        let base = 1_704_067_200;
-        let later = base + 12 * 3600;
+        let base = 1_704_067_200.0;
+        let later = base + 12.0 * 3600.0;
         let a = solar_direction(&MARS, LOCATION, base);
         let b = solar_direction(&MARS, LOCATION, later);
         assert!(dot(a, b) < -0.2, "dot={}", dot(a, b));
@@ -115,8 +115,8 @@ mod tests {
 
     #[test]
     fn solar_direction_repeats_each_sol() {
-        let base = 1_704_110_400;
-        let next_sol = base + MARS.sol_seconds.round() as i64;
+        let base = 1_704_110_400.0;
+        let next_sol = base + MARS.sol_seconds;
         let a = solar_direction(&MARS, LOCATION, base);
         let b = solar_direction(&MARS, LOCATION, next_sol);
         assert!(dot(a, b) > 0.999, "dot={}", dot(a, b));
