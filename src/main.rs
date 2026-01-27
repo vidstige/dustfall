@@ -33,7 +33,7 @@ const ASTRONAUT_STOP_DISTANCE: f32 = 0.05;
 // The astronaut model's forward axis points to +X, so we rotate by -90deg to align with +Z.
 const ASTRONAUT_FORWARD_YAW_OFFSET: f32 = -std::f32::consts::FRAC_PI_2;
 const DEFAULT_LOCATION: Location = Location {
-    latitude: 54.0 * (TAU / 360.0),
+    latitude: 22.5 * (TAU / 360.0),
     longitude: 137.4 * (TAU / 360.0),
 };
 
@@ -125,7 +125,7 @@ fn setup_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn setup_lighting(mut commands: Commands) {
     commands.insert_resource(AmbientLight {
         color: Color::rgb(0.9, 0.9, 1.0),
-        brightness: 0.35,
+        brightness: 0.1,
     });
     commands.insert_resource(DirectionalLightShadowMap { size: 2048 });
     commands.spawn(DirectionalLightBundle {
@@ -223,9 +223,10 @@ fn spawn_tiles_when_ready(
         normal_handle,
     );
     let material = materials.add(StandardMaterial {
-        base_color: Color::rgb(0.4, 0.4, 0.4),
+        base_color: Color::rgb(1.0, 1.0, 1.0),
         base_color_texture: Some(albedo_handle.0.clone()),
         normal_map_texture: Some(atlas.handle.clone()),
+        flip_normal_map_y: true,
         perceptual_roughness: 0.9,
         cull_mode: None,
         ..default()
