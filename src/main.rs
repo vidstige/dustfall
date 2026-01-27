@@ -226,7 +226,6 @@ fn spawn_tiles_when_ready(
         base_color: Color::rgb(1.0, 1.0, 1.0),
         base_color_texture: Some(albedo_handle.0.clone()),
         normal_map_texture: Some(atlas.handle.clone()),
-        flip_normal_map_y: true,
         perceptual_roughness: 0.9,
         cull_mode: None,
         ..default()

@@ -105,7 +105,8 @@ fn heightmap_normal(
         (h_u - h_d) / ((y1 - y0) as f32 * world_scale)
     };
 
-    Vec3::new(-dx, 1.0, -dz).normalize()
+    // Tangent-space normal (T,B,N) with +Y along +V (OpenGL-style).
+    Vec3::new(-dx, -dz, 1.0).normalize()
 }
 
 fn normal_channel_u16(value: f32) -> u16 {
