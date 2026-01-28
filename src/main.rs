@@ -132,6 +132,8 @@ fn setup_lighting(mut commands: Commands) {
         directional_light: DirectionalLight {
             illuminance: 18000.0,
             shadows_enabled: true,
+            shadow_depth_bias: 0.02,
+            shadow_normal_bias: 1.0,
             ..default()
         },
         transform: Transform::from_rotation(Quat::from_euler(
