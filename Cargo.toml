@@ -14,6 +14,7 @@ bevy = { version = "0.11.3", default-features = false, features = [
   "bevy_scene",
   "bevy_animation",
   "bevy_gltf",
+  "x11",
   "png",
 ] }
 bevy_gltf = { version = "0.11.3", features = ["bevy_animation"] }
