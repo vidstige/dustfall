@@ -9,16 +9,16 @@ impl PressureScale {
         Self { pascal_per_unit }
     }
 
-    pub fn to_pascal(self, pressure_units: i32) -> f32 {
+    pub fn to_pascal(self, pressure_units: i64) -> f32 {
         pressure_units as f32 * self.pascal_per_unit
     }
 
-    pub fn from_pascal(self, pascal: f32) -> i32 {
+    pub fn from_pascal(self, pascal: f32) -> i64 {
         assert!(pascal >= 0.0, "pascal must be non-negative");
-        (pascal / self.pascal_per_unit).round() as i32
+        (pascal / self.pascal_per_unit).round() as i64
     }
 
-    pub fn pressure_for_parts(self, pascal: f32) -> i32 {
+    pub fn pressure_for_parts(self, pascal: f32) -> i64 {
         self.from_pascal(pascal)
     }
 }

@@ -2,6 +2,19 @@
 name = "dustfall"
 version = "0.1.0"
 edition = "2021"
+default-run = "dustfall"
 
 [dependencies]
-macroquad = "0.4"
+bevy = { version = "0.11.3", default-features = false, features = [
+  "bevy_winit",
+  "bevy_render",
+  "bevy_core_pipeline",
+  "bevy_pbr",
+  "bevy_asset",
+  "bevy_scene",
+  "bevy_animation",
+  "bevy_gltf",
+  "png",
+] }
+bevy_gltf = { version = "0.11.3", features = ["bevy_animation"] }
+rand = "0.8"

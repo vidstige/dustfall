@@ -1,6 +1,6 @@
 ## Dustfall
 
-An isometric dark-planet survival toy built with Rust and `macroquad`. The prototype focuses on low-fi pixel art, procedural tiles, and quick iteration on camera/rendering experiments.
+An isometric dark-planet survival toy built with Rust and `bevy`. The prototype focuses on low-fi pixel art, procedural tiles, and quick iteration on camera/rendering experiments.
 
 ### Run
 

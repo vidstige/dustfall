@@ -1,15 +1,34 @@
-use macroquad::prelude::*;
+use bevy::prelude::*;
 
-pub struct TileAtlas {
-    pub texture: Texture2D,
+pub struct TextureAtlas {
+    pub handle: Handle<Image>,
     columns: usize,
     rows: usize,
-    tile_count: usize,
 }
 
-impl TileAtlas {
+impl TextureAtlas {
+    pub fn from_image(image: &Image, patch_size: usize, handle: Handle<Image>) -> Self {
+        assert!(patch_size > 0, "texture atlas patch size must be non-zero");
+        let width = image.texture_descriptor.size.width as usize;
+        let height = image.texture_descriptor.size.height as usize;
+        assert!(
+            width % patch_size == 0 && height % patch_size == 0,
+            "texture atlas size must be divisible by patch size"
+        );
+
+        let columns = width / patch_size;
+        let rows = height / patch_size;
+        assert!(columns > 0 && rows > 0, "texture atlas is empty");
+
+        Self {
+            handle,
+            columns,
+            rows,
+        }
+    }
+
     pub fn uv_bounds(&self, index: usize) -> (Vec2, Vec2) {
-        let tile_index = index % self.tile_count;
+        let tile_index = index % (self.columns * self.rows);
         let column = tile_index % self.columns;
         let row = tile_index / self.columns;
         let u0 = column as f32 / self.columns as f32;
@@ -17,38 +36,6 @@ impl TileAtlas {
         let u1 = (column + 1) as f32 / self.columns as f32;
         let v1 = (row + 1) as f32 / self.rows as f32;
 
-        (vec2(u0, v0), vec2(u1, v1))
-    }
-}
-
-pub async fn load_tile_atlas(path: &str, columns: usize) -> TileAtlas {
-    assert!(columns > 0, "tile atlas columns must be non-zero");
-
-    let atlas = load_image(path)
-        .await
-        .unwrap_or_else(|err| panic!("failed to load {path}: {err}"));
-    let width = atlas.width as usize;
-    let height = atlas.height as usize;
-    let tile_width = width / columns;
-    assert!(tile_width > 0, "tile atlas width is too small");
-    assert!(
-        width % columns == 0,
-        "tile atlas width must be divisible by columns"
-    );
-    assert!(
-        height % tile_width == 0,
-        "tile atlas height must be divisible by tile width"
-    );
-    let rows = height / tile_width;
-    let tile_count = columns * rows;
-
-    let texture = Texture2D::from_image(&atlas);
-    texture.set_filter(FilterMode::Nearest);
-
-    TileAtlas {
-        texture,
-        columns,
-        rows,
-        tile_count,
+        (Vec2::new(u0, v0), Vec2::new(u1, v1))
     }
 }
