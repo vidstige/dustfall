@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::asset::LoadState;
 use bevy::log::{Level, LogPlugin};
 use bevy::pbr::DirectionalLightShadowMap;
 use bevy::render::mesh::{Indices, Mesh};
@@ -37,6 +38,13 @@ const DEFAULT_LOCATION: Location = Location {
     longitude: 137.4 * (TAU / 360.0),
 };
 
+#[derive(States, Debug, Clone, Eq, PartialEq, Hash, Default)]
+enum AppState {
+    #[default]
+    Loading,
+    Running,
+}
+
 #[derive(Resource)]
 struct TileMap {
     width: usize,
@@ -44,20 +52,28 @@ struct TileMap {
     tiles: Vec<u32>,
 }
 
+#[derive(Resource)]
+struct GameAssets {
+    heightmap: Handle<Image>,
+    albedo: Handle<Image>,
+    astronaut_gltf: Handle<Gltf>,
+    astronaut_scene: Handle<Scene>,
+}
 
 #[derive(Resource)]
-struct HeightmapHandle(Handle<Image>);
-
-#[derive(Resource)]
-struct AlbedoHandle(Handle<Image>);
-
-#[derive(Resource)]
-struct AstronautAssets {
-    gltf: Handle<Gltf>,
+#[allow(dead_code)]
+struct TerrainAssets {
+    atlas: texture_atlas::TextureAtlas,
+    material: Handle<StandardMaterial>,
 }
 
 #[derive(Component)]
 struct Astronaut;
+
+#[derive(Component)]
+struct LoadingIndicator {
+    base_scale: f32,
+}
 
 #[derive(Component)]
 struct AstronautController {
@@ -81,6 +97,7 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
         .insert_resource(AstronautAnimations::default())
+        .add_state::<AppState>()
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -92,34 +109,117 @@ fn main() {
                 }),
         )
         .insert_resource(random_map(GRID_WIDTH, GRID_HEIGHT))
+        .add_systems(Startup, (isometric::spawn_iso_camera, load_assets))
         .add_systems(
-            Startup,
+            OnEnter(AppState::Loading),
+            spawn_loading_indicator,
+        )
+        .add_systems(OnExit(AppState::Loading), despawn_loading_indicator)
+        .add_systems(
+            Update,
             (
-                isometric::spawn_iso_camera,
-                setup_textures,
-                setup_lighting,
-                setup_astronaut,
-            ),
+                check_loading_ready,
+                animate_loading_indicator,
+            )
+                .run_if(in_state(AppState::Loading)),
+        )
+        .add_systems(
+            OnEnter(AppState::Running),
+            (setup_lighting, spawn_tiles, setup_astronaut),
         )
         .add_systems(
             Update,
             (
                 isometric::update_iso_camera,
-                spawn_tiles_when_ready,
                 init_scene_animations,
                 update_sun_light,
                 (update_astronaut_movement, update_astronaut_animation_state).chain(),
-            ),
+            )
+                .run_if(in_state(AppState::Running)),
         )
-        .add_systems(PostUpdate, remove_cameras::<Astronaut>)
+        .add_systems(
+            PostUpdate,
+            remove_cameras::<Astronaut>.run_if(in_state(AppState::Running)),
+        )
         .run();
 }
 
-fn setup_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let heightmap_handle = asset_server.load(HEIGHTMAP_PATH);
-    let albedo_handle = asset_server.load(ALBEDO_PATH);
-    commands.insert_resource(HeightmapHandle(heightmap_handle));
-    commands.insert_resource(AlbedoHandle(albedo_handle));
+fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let heightmap = asset_server.load(HEIGHTMAP_PATH);
+    let albedo = asset_server.load(ALBEDO_PATH);
+    let astronaut_gltf = asset_server.load("models/astronaut/astronaut-textured.glb");
+    let astronaut_scene = asset_server.load("models/astronaut/astronaut-textured.glb#Scene0");
+    commands.insert_resource(GameAssets {
+        heightmap,
+        albedo,
+        astronaut_gltf,
+        astronaut_scene,
+    });
+}
+
+fn spawn_loading_indicator(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let mesh = meshes.add(Mesh::from(shape::UVSphere {
+        radius: 0.5,
+        sectors: 32,
+        stacks: 16,
+    }));
+    let material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.9, 0.9, 0.95),
+        emissive: Color::rgb(0.15, 0.15, 0.2),
+        unlit: true,
+        ..default()
+    });
+    commands.spawn((
+        PbrBundle {
+            mesh,
+            material,
+            transform: Transform::from_translation(Vec3::new(0.0, 0.5, 0.0)),
+            ..default()
+        },
+        LoadingIndicator { base_scale: 1.0 },
+    ));
+}
+
+fn despawn_loading_indicator(
+    mut commands: Commands,
+    indicators: Query<Entity, With<LoadingIndicator>>,
+) {
+    for entity in &indicators {
+        commands.entity(entity).despawn_recursive();
+    }
+}
+
+fn animate_loading_indicator(
+    time: Res<Time>,
+    mut indicators: Query<(&mut Transform, &LoadingIndicator)>,
+) {
+    let pulse = 1.0 + (time.elapsed_seconds() * 3.0).sin() * 0.15;
+    for (mut transform, indicator) in &mut indicators {
+        transform.scale = Vec3::splat(indicator.base_scale * pulse);
+    }
+}
+
+fn check_loading_ready(
+    asset_server: Res<AssetServer>,
+    assets: Res<GameAssets>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    let heightmap_loaded =
+        asset_server.get_load_state(&assets.heightmap) == LoadState::Loaded;
+    let albedo_loaded =
+        asset_server.get_load_state(&assets.albedo) == LoadState::Loaded;
+    let astronaut_gltf_loaded =
+        asset_server.get_load_state(&assets.astronaut_gltf) == LoadState::Loaded;
+    let astronaut_scene_loaded =
+        asset_server.get_load_state(&assets.astronaut_scene) == LoadState::Loaded;
+
+    if heightmap_loaded && albedo_loaded && astronaut_gltf_loaded && astronaut_scene_loaded {
+        next_state.set(AppState::Running);
+    }
 }
 
 fn setup_lighting(mut commands: Commands) {
@@ -160,14 +260,11 @@ fn update_sun_light(
     }
 }
 
-fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let gltf = asset_server.load("models/astronaut/astronaut-textured.glb");
-    let scene = asset_server.load("models/astronaut/astronaut-textured.glb#Scene0");
+fn setup_astronaut(mut commands: Commands, assets: Res<GameAssets>) {
     let spawn_translation = Vec3::new(2.0, 0.0, 0.5);
-    commands.insert_resource(AstronautAssets { gltf });
     commands.spawn((
         SceneBundle {
-            scene,
+            scene: assets.astronaut_scene.clone(),
             transform: Transform {
                 translation: spawn_translation,
                 scale: Vec3::splat(ASTRONAUT_SCALE),
@@ -185,28 +282,22 @@ fn setup_astronaut(mut commands: Commands, asset_server: Res<AssetServer>) {
     ));
 }
 
-fn spawn_tiles_when_ready(
+fn spawn_tiles(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     map: Res<TileMap>,
-    heightmap_handle: Res<HeightmapHandle>,
-    albedo_handle: Res<AlbedoHandle>,
-    mut spawned: Local<bool>,
+    assets: Res<GameAssets>,
 ) {
-    if *spawned {
-        return;
-    }
-
-    let heightmap_image = match images.get(&heightmap_handle.0) {
-        Some(image) => image.clone(),
-        None => return,
-    };
-    let albedo_image = match images.get(&albedo_handle.0) {
-        Some(image) => image.clone(),
-        None => return,
-    };
+    let heightmap_image = images
+        .get(&assets.heightmap)
+        .expect("heightmap image not loaded")
+        .clone();
+    let albedo_image = images
+        .get(&assets.albedo)
+        .expect("albedo image not loaded")
+        .clone();
     assert_eq!(
         heightmap_image.texture_descriptor.size,
         albedo_image.texture_descriptor.size,
@@ -226,7 +317,7 @@ fn spawn_tiles_when_ready(
     );
     let material = materials.add(StandardMaterial {
         base_color: Color::rgb(1.0, 1.0, 1.0),
-        base_color_texture: Some(albedo_handle.0.clone()),
+        base_color_texture: Some(assets.albedo.clone()),
         normal_map_texture: Some(atlas.handle.clone()),
         perceptual_roughness: 0.9,
         cull_mode: None,
@@ -242,11 +333,11 @@ fn spawn_tiles_when_ready(
         });
     }
 
-    *spawned = true;
+    commands.insert_resource(TerrainAssets { atlas, material });
 }
 
 fn init_scene_animations(
-    astronaut_assets: Res<AstronautAssets>,
+    assets: Res<GameAssets>,
     gltfs: Res<Assets<Gltf>>,
     mut astronaut_animations: ResMut<AstronautAnimations>,
     astronaut_roots: Query<Entity, With<Astronaut>>,
@@ -258,7 +349,7 @@ fn init_scene_animations(
         return;
     }
 
-    let Some(gltf) = gltfs.get(&astronaut_assets.gltf) else {
+    let Some(gltf) = gltfs.get(&assets.astronaut_gltf) else {
         return;
     };
     if astronaut_animations.clips.is_none() {
