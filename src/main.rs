@@ -77,6 +77,9 @@ struct LoadingIndicator {
 }
 
 #[derive(Component)]
+struct TerrainChunk;
+
+#[derive(Component)]
 struct AstronautController {
     target: Vec3,
     speed: f32,
@@ -121,13 +124,14 @@ fn main() {
         )
         .add_systems(
             OnEnter(AppState::Running),
-            (setup_lighting, spawn_tiles, setup_astronaut),
+            (setup_lighting, prepare_terrain_assets, setup_astronaut),
         )
         .add_systems(
             Update,
             (
-                isometric::update_iso_camera,
                 init_scene_animations,
+                spawn_tile_meshes,
+                isometric::update_iso_camera,
                 update_sun_light,
                 (update_astronaut_movement, update_astronaut_animation_state).chain(),
             )
@@ -288,12 +292,10 @@ fn setup_astronaut(mut commands: Commands, assets: Res<GameAssets>) {
     ));
 }
 
-fn spawn_tiles(
+fn prepare_terrain_assets(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
-    map: Res<TileMap>,
     assets: Res<GameAssets>,
 ) {
     let heightmap_image = images
@@ -330,16 +332,29 @@ fn spawn_tiles(
         ..default()
     });
 
-    for mut mesh in build_grid_meshes(&map, &atlas) {
+    commands.insert_resource(TerrainAssets { atlas, material });
+}
+
+fn spawn_tile_meshes(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    map: Res<TileMap>,
+    terrain: Res<TerrainAssets>,
+    chunks: Query<Entity, With<TerrainChunk>>,
+) {
+    if !chunks.is_empty() {
+        return;
+    }
+
+    for mut mesh in build_grid_meshes(&map, &terrain.atlas) {
         let _ = mesh.generate_tangents();
         commands.spawn(PbrBundle {
             mesh: meshes.add(mesh),
-            material: material.clone(),
+            material: terrain.material.clone(),
             ..default()
-        });
+        })
+        .insert(TerrainChunk);
     }
-
-    commands.insert_resource(TerrainAssets { atlas, material });
 }
 
 fn init_scene_animations(
