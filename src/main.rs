@@ -7,7 +7,6 @@ use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::texture::ImagePlugin;
 use bevy::animation::AnimationPlayer;
 use bevy::app::PostUpdate;
-use bevy::gltf::Gltf;
 use bevy::window::PrimaryWindow;
 use rand::Rng;
 use std::f32::consts::TAU;
@@ -24,6 +23,9 @@ const TILE_SIZE: f32 = 4.0;
 const CHUNK_SIZE: usize = 16;
 const HEIGHTMAP_PATH: &str = "images/height-map.png";
 const ALBEDO_PATH: &str = "images/albedo-map.png";
+// Animation indices from animation-ids.txt (Idle_Breath=1, Walk_Loop=7).
+const ASTRONAUT_IDLE_ANIM: &str = "models/astronaut/astronaut-textured.glb#Animation1";
+const ASTRONAUT_WALK_ANIM: &str = "models/astronaut/astronaut-textured.glb#Animation7";
 const HEIGHTMAP_BUMP_SLOPE: f32 = 16.0;
 const HEIGHTMAP_BUMP_SCALE: f32 = HEIGHTMAP_BUMP_SLOPE * TILE_SIZE;
 const HEIGHTMAP_PATCH_SIZE: usize = 128;
@@ -56,7 +58,6 @@ struct TileMap {
 struct GameAssets {
     heightmap: Handle<Image>,
     albedo: Handle<Image>,
-    astronaut_gltf: Handle<Gltf>,
     astronaut_scene: Handle<Scene>,
 }
 
@@ -83,12 +84,8 @@ struct AstronautController {
     moving: bool,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 struct AstronautAnimations {
-    clips: Option<AstronautAnimationClips>,
-}
-
-struct AstronautAnimationClips {
     idle: Handle<AnimationClip>,
     walk: Handle<AnimationClip>,
 }
@@ -96,7 +93,6 @@ struct AstronautAnimationClips {
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.05, 0.05, 0.08)))
-        .insert_resource(AstronautAnimations::default())
         .add_state::<AppState>()
         .add_plugins(
             DefaultPlugins
@@ -147,13 +143,15 @@ fn main() {
 fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
     let heightmap = asset_server.load(HEIGHTMAP_PATH);
     let albedo = asset_server.load(ALBEDO_PATH);
-    let astronaut_gltf = asset_server.load("models/astronaut/astronaut-textured.glb");
     let astronaut_scene = asset_server.load("models/astronaut/astronaut-textured.glb#Scene0");
     commands.insert_resource(GameAssets {
         heightmap,
         albedo,
-        astronaut_gltf,
         astronaut_scene,
+    });
+    commands.insert_resource(AstronautAnimations {
+        idle: asset_server.load(ASTRONAUT_IDLE_ANIM),
+        walk: asset_server.load(ASTRONAUT_WALK_ANIM),
     });
 }
 
@@ -206,18 +204,26 @@ fn animate_loading_indicator(
 fn check_loading_ready(
     asset_server: Res<AssetServer>,
     assets: Res<GameAssets>,
+    animations: Res<AstronautAnimations>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let heightmap_loaded =
         asset_server.get_load_state(&assets.heightmap) == LoadState::Loaded;
     let albedo_loaded =
         asset_server.get_load_state(&assets.albedo) == LoadState::Loaded;
-    let astronaut_gltf_loaded =
-        asset_server.get_load_state(&assets.astronaut_gltf) == LoadState::Loaded;
     let astronaut_scene_loaded =
         asset_server.get_load_state(&assets.astronaut_scene) == LoadState::Loaded;
+    let astronaut_idle_loaded =
+        asset_server.get_load_state(&animations.idle) == LoadState::Loaded;
+    let astronaut_walk_loaded =
+        asset_server.get_load_state(&animations.walk) == LoadState::Loaded;
 
-    if heightmap_loaded && albedo_loaded && astronaut_gltf_loaded && astronaut_scene_loaded {
+    if heightmap_loaded
+        && albedo_loaded
+        && astronaut_scene_loaded
+        && astronaut_idle_loaded
+        && astronaut_walk_loaded
+    {
         next_state.set(AppState::Running);
     }
 }
@@ -337,9 +343,7 @@ fn spawn_tiles(
 }
 
 fn init_scene_animations(
-    assets: Res<GameAssets>,
-    gltfs: Res<Assets<Gltf>>,
-    mut astronaut_animations: ResMut<AstronautAnimations>,
+    astronaut_animations: Res<AstronautAnimations>,
     astronaut_roots: Query<Entity, With<Astronaut>>,
     parents: Query<&Parent>,
     mut players: Query<(Entity, &mut AnimationPlayer), Added<AnimationPlayer>>,
@@ -349,28 +353,9 @@ fn init_scene_animations(
         return;
     }
 
-    let Some(gltf) = gltfs.get(&assets.astronaut_gltf) else {
-        return;
-    };
-    if astronaut_animations.clips.is_none() {
-        let Some(idle) = gltf.named_animations.get("Idle_Breath").cloned() else {
-            return;
-        };
-        let Some(walk) = gltf.named_animations.get("Walk_Loop").cloned() else {
-            return;
-        };
-        astronaut_animations.clips = Some(AstronautAnimationClips {
-            idle,
-            walk,
-        });
-    }
-    let Some(clips) = astronaut_animations.clips.as_ref() else {
-        return;
-    };
-
     for (entity, mut player) in &mut players {
         if is_descendant_of(entity, &astronaut_entities, &parents) {
-            player.play(clips.idle.clone());
+            player.play(astronaut_animations.idle.clone());
             player.repeat();
             player.set_speed(1.0);
             player.resume();
@@ -598,15 +583,11 @@ fn update_astronaut_animation_state(
     parents: Query<&Parent>,
     mut players: Query<(Entity, &mut AnimationPlayer)>,
 ) {
-    let Some(clips) = animations.clips.as_ref() else {
-        return;
-    };
-
     for (astronaut_entity, controller) in &astronauts {
         let desired = if controller.moving {
-            clips.walk.clone()
+            animations.walk.clone()
         } else {
-            clips.idle.clone()
+            animations.idle.clone()
         };
         let roots = [astronaut_entity];
         for (player_entity, mut player) in &mut players {
