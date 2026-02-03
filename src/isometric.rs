@@ -1,5 +1,6 @@
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
+use bevy::input::touchpad::TouchpadMagnify;
 use bevy::prelude::*;
 use bevy::render::camera::{OrthographicProjection, Projection, ScalingMode};
 use bevy::window::PrimaryWindow;
@@ -10,6 +11,7 @@ const CAMERA_DISTANCE_SCALE: f32 = 2.2;
 
 const TRACKPAD_PAN_SCALE: f32 = 0.1;
 const SCROLL_ZOOM_RATE: f32 = 0.02;
+const MAGNIFY_ZOOM_RATE: f32 = 1.0;
 pub const INITIAL_ZOOM: f32 = 10.0;
 const MIN_ZOOM: f32 = 4.0;
 const MAX_ZOOM: f32 = 32.0;
@@ -61,6 +63,7 @@ pub fn spawn_iso_camera(mut commands: Commands) {
 pub fn update_iso_camera(
     mut camera: ResMut<IsoCamera>,
     mut scroll_events: EventReader<MouseWheel>,
+    mut magnify_events: EventReader<TouchpadMagnify>,
     mouse_buttons: Res<Input<MouseButton>>,
     keys: Res<Input<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -74,7 +77,10 @@ pub fn update_iso_camera(
         }
         scroll_delta += delta;
     }
-    scroll_delta = -scroll_delta; // natural scroll
+    let mut magnify_delta = 0.0;
+    for event in magnify_events.iter() {
+        magnify_delta += event.0;
+    }
 
     let window = windows.get_single().ok();
     let cursor_pos = window.and_then(|window| window.cursor_position());
@@ -95,14 +101,16 @@ pub fn update_iso_camera(
             camera.last_cursor_pos = cursor_pos;
         }
 
-        if scroll_delta.length_squared() > 0.0 {
+        if magnify_delta.abs() > 0.0 {
+            camera.zoom = (camera.zoom * (1.0 - magnify_delta * MAGNIFY_ZOOM_RATE))
+                .clamp(MIN_ZOOM, MAX_ZOOM);
+        } else if scroll_delta.length_squared() > 0.0 {
             if zoom_modifier_active(&keys) {
-                camera.zoom = (camera.zoom * (1.0 - scroll_delta.y * SCROLL_ZOOM_RATE))
+                camera.zoom = (camera.zoom * (1.0 + scroll_delta.y * SCROLL_ZOOM_RATE))
                     .clamp(MIN_ZOOM, MAX_ZOOM);
             } else {
                 if let Some(current_pos) = cursor_pos {
-                    let scroll_pan =
-                        Vec2::new(scroll_delta.x, -scroll_delta.y) * TRACKPAD_PAN_SCALE;
+                    let scroll_pan = scroll_delta * TRACKPAD_PAN_SCALE;
                     let scaled_pos = current_pos + scroll_pan;
                     if let Some(world_delta) = cursor_pan_delta(
                         camera_component,
