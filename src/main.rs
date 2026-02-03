@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::asset::LoadState;
 use bevy::log::{Level, LogPlugin};
 use bevy::pbr::DirectionalLightShadowMap;
+use bevy::math::Ray;
 use bevy::render::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::texture::ImagePlugin;
@@ -9,6 +10,7 @@ use bevy::animation::AnimationPlayer;
 use bevy::app::PostUpdate;
 use bevy::window::PrimaryWindow;
 use rand::Rng;
+use std::collections::HashSet;
 use std::f32::consts::TAU;
 use dustfall::solar::{self, Location};
 
@@ -77,7 +79,9 @@ struct LoadingIndicator {
 }
 
 #[derive(Component)]
-struct TerrainChunk;
+struct TerrainChunk {
+    coord: IVec2,
+}
 
 #[derive(Component)]
 struct AstronautController {
@@ -340,20 +344,55 @@ fn spawn_tile_meshes(
     mut meshes: ResMut<Assets<Mesh>>,
     map: Res<TileMap>,
     terrain: Res<TerrainAssets>,
-    chunks: Query<Entity, With<TerrainChunk>>,
+    chunks: Query<&TerrainChunk>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<isometric::IsoCameraTag>>,
 ) {
-    if !chunks.is_empty() {
+    let Ok((camera, camera_transform)) = camera_query.get_single() else {
+        return;
+    };
+
+    let chunk_world_size = Vec2::splat(CHUNK_SIZE as f32 * TILE_SIZE);
+    let visible = visible_chunks(chunk_world_size, 0.0, camera, camera_transform);
+    if visible.is_empty() {
         return;
     }
 
-    for mut mesh in build_grid_meshes(&map, &terrain.atlas) {
+    let mut existing = HashSet::with_capacity(chunks.iter().len());
+    for chunk in &chunks {
+        existing.insert(chunk.coord);
+    }
+
+    let chunks_x = map.width / CHUNK_SIZE;
+    let chunks_y = map.height / CHUNK_SIZE;
+    let half_w = map.width as f32 * TILE_SIZE * 0.5;
+    let half_h = map.height as f32 * TILE_SIZE * 0.5;
+    let offset_x = (half_w / chunk_world_size.x).round() as i32;
+    let offset_y = (half_h / chunk_world_size.y).round() as i32;
+
+    for (chunk_x, chunk_y) in visible {
+        let map_chunk_x = chunk_x + offset_x;
+        let map_chunk_y = chunk_y + offset_y;
+        if map_chunk_x < 0 || map_chunk_y < 0 {
+            continue;
+        }
+        let chunk_x = map_chunk_x as usize;
+        let chunk_y = map_chunk_y as usize;
+        if chunk_x >= chunks_x || chunk_y >= chunks_y {
+            continue;
+        }
+        let coord = IVec2::new(chunk_x as i32, chunk_y as i32);
+        if existing.contains(&coord) {
+            continue;
+        }
+
+        let mut mesh = build_chunk_mesh(&map, &terrain.atlas, chunk_x, chunk_y, half_w, half_h);
         let _ = mesh.generate_tangents();
         commands.spawn(PbrBundle {
             mesh: meshes.add(mesh),
             material: terrain.material.clone(),
             ..default()
         })
-        .insert(TerrainChunk);
+        .insert(TerrainChunk { coord });
     }
 }
 
@@ -429,6 +468,81 @@ fn build_grid_meshes(map: &TileMap, atlas: &texture_atlas::TextureAtlas) -> Vec<
     }
 
     meshes
+}
+
+fn visible_chunks(
+    chunk_world_size: Vec2,
+    plane_y: f32,
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+) -> Vec<(i32, i32)> {
+    assert!(chunk_world_size.x > 0.0, "chunk world width must be positive");
+    assert!(chunk_world_size.y > 0.0, "chunk world height must be positive");
+    let Some(viewport_size) = camera.logical_viewport_size() else {
+        return Vec::new();
+    };
+
+    let corners = [
+        Vec2::ZERO,
+        Vec2::new(viewport_size.x, 0.0),
+        Vec2::new(0.0, viewport_size.y),
+        Vec2::new(viewport_size.x, viewport_size.y),
+    ];
+
+    let rays: Vec<_> = corners
+        .into_iter()
+        .filter_map(|corner| camera.viewport_to_world(camera_transform, corner))
+        .collect();
+
+    let points: Vec<_> = rays
+        .iter()
+        .filter_map(|ray| project_ray_onto_xz_plane(ray, plane_y))
+        .collect();
+
+    let min_x = points.iter().map(|pos| pos.x).reduce(f32::min);
+    let max_x = points.iter().map(|pos| pos.x).reduce(f32::max);
+    let min_y = points.iter().map(|pos| pos.z).reduce(f32::min);
+    let max_y = points.iter().map(|pos| pos.z).reduce(f32::max);
+
+    let (Some(min_x), Some(max_x), Some(min_y), Some(max_y)) = (min_x, max_x, min_y, max_y) else {
+        return Vec::new();
+    };
+
+    let world_min = Vec2::new(min_x, min_y);
+    let world_max = Vec2::new(max_x, max_y);
+
+    let min_chunk_x = (world_min.x / chunk_world_size.x).floor() as i32;
+    let max_chunk_x = (world_max.x / chunk_world_size.x).ceil() as i32;
+    let min_chunk_y = (world_min.y / chunk_world_size.y).floor() as i32;
+    let max_chunk_y = (world_max.y / chunk_world_size.y).ceil() as i32;
+
+    if min_chunk_x > max_chunk_x || min_chunk_y > max_chunk_y {
+        return Vec::new();
+    }
+
+    let count_x = (max_chunk_x - min_chunk_x + 1).max(0) as usize;
+    let count_y = (max_chunk_y - min_chunk_y + 1).max(0) as usize;
+    let mut coords = Vec::with_capacity(count_x * count_y);
+    for chunk_y in min_chunk_y..=max_chunk_y {
+        for chunk_x in min_chunk_x..=max_chunk_x {
+            coords.push((chunk_x, chunk_y));
+        }
+    }
+
+    coords
+}
+
+fn project_ray_onto_xz_plane(ray: &Ray, plane_y: f32) -> Option<Vec3> {
+    if ray.direction.y.abs() < 1e-6 {
+        return None;
+    }
+
+    let t = (plane_y - ray.origin.y) / ray.direction.y;
+    if t < 0.0 {
+        return None;
+    }
+
+    Some(ray.origin + ray.direction * t)
 }
 
 fn build_chunk_mesh(
